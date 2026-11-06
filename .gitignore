@@ -1,0 +1,21 @@
+cat > .gitignore << 'EOF'
+# Secrets - never commit
+.env
+*.key
+*.pem
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Logs and local data
+*.log
+logs/
+backups/
+
+# Editors and systems
+.vscode/
+.idea/
+.DS_Store
+EOF
