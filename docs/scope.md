@@ -1,8 +1,13 @@
 # Document de cadrage — ProveItGo GTM Tool
 
-Version 1.0 · 10 novembre 2026
+Version 1.1 · 10 novembre 2026
 
 Propriétaire : superviseur, avec les trois stagiaires.
+
+La version 1.1 sépare le **score commercial** de l'**éligibilité réglementaire**.
+Les procédures de contrôle (registre Roskomnadzor, licence de paris) sont
+rédigées dans `docs/verification.md` : ce document dit **quoi** exiger, l'autre
+dit **comment** le prouver.
 
 Les critères de ce document ont été **fixés par le donneur d'ordre**. Ils ne sont
 plus des propositions : les valeurs marquées ⟨proposé⟩ dans la version 0.1 sont
@@ -159,7 +164,12 @@ SCORED           score calculé, chaque point rattaché à un fait
    +--> REJECTED         score < 70, exclusion active, ou hors profil
    |
    v
-PRESELECTED      créateur à 70 ou plus, ou acheteur à 70 ou plus
+ELIGIBILITY      contrôle réglementaire : registre RKN, licence de paris
+   |
+   +--> INELIGIBLE / MANUAL REVIEW    score élevé mais contrôle non confirmé
+   |
+   v
+PRESELECTED      score à 70 ou plus **et** éligibilité confirmée
    |
    +--> AUDIT (créateurs uniquement)   vérification ProveItGo avant le vivier
    |
@@ -175,6 +185,8 @@ CONTACTED / REPLIED / MEETING / CLIENT / OPT_OUT
 | NEW → IDENTIFIED | oui | non |
 | IDENTIFIED → ENRICHED | oui | non |
 | ENRICHED → SCORED | oui | non |
+| SCORED → ELIGIBILITY | oui | non |
+| ELIGIBILITY → PRESELECTED / INELIGIBLE | oui, règle déterministe | oui si MANUAL_REVIEW |
 | SCORED → PRESELECTED / REJECTED | oui, avec justification écrite | non, mais révisable |
 | → TO REVIEW | oui | non |
 | TO REVIEW → autre | non | oui |
@@ -193,6 +205,11 @@ preuves, pas seulement le score.
 
 Règle **H-03** — Un créateur présélectionné n'entre dans le vivier qu'après
 l'audit ProveItGo. Le score ne remplace pas l'audit.
+
+Règle **H-04 — indépendance du score et de l'éligibilité** — Une vérification
+réussie n'ajoute aucun point, et un score élevé ne rattrape aucune vérification
+manquante. Un créateur à 95/100 reste inéligible si son obligation
+d'enregistrement n'est pas confirmée. Les deux mesures ne se mélangent jamais.
 
 ---
 
@@ -269,11 +286,14 @@ on signale une incohérence.
 
 ### 5.5 Champs obligatoires (creator)
 
-`main_platform`, `handle`, `profile_url`, `display_name`, `country`,
-`content_language`, `gaming_share`, `followers`, `average_views`,
-`published_last_30_days`, `last_published_at`, `rkn_registry_url`,
-`foreign_agent_label`, `ad_contact_or_rate_card`, `past_labeled_ads`,
-`platform_risk`, `contact_channel`, `source_refs`, `criteria_version`.
+`main_platform`, `handle`, `platform_url`, `platform_account_id`,
+`display_name`, `country`, `content_language`, `gaming_share`, `followers`,
+`followers_read_at`, `average_views`, `published_last_30_days`,
+`last_published_at`, `rkn_registry_url`, `rkn_registry_status`,
+`registry_domain_ok`, `registry_url_match`, `a_plus_badge`,
+`creator_control_verified`, `foreign_agent_label`, `ad_contact_or_rate_card`,
+`past_labeled_ads`, `platform_risk`, `eligibility_status`, `verification_date`,
+`verification_evidence`, `contact_channel`, `source_refs`, `criteria_version`.
 
 Champs utiles mais facultatifs : `other_profiles`, `media_kit_url`, `agency`,
 `audience_geography`, `average_concurrent_viewers`, `audit_notes`.
@@ -370,8 +390,11 @@ campagne doit viser des créateurs à audience adulte.
 `country`, `region`, `website`, `sells_to_gamers_evidence`,
 `labeled_ads_last_90_days`, `ad_label_refs` (source, date, erid),
 `sanctions_checked_at`, `employee_band`, `decision_maker_role`,
-`decision_maker_email_verified`, `timing_signal`, `contact_channel`,
-`source_refs`, `criteria_version`.
+`decision_maker_email_verified`, `timing_signal`, `license_authority`,
+`license_number`, `license_status`, `licensed_activity`, `official_domain`,
+`domain_match`, `license_registry_url`, `license_checked_at`,
+`eligibility_status`, `verification_date`, `verification_evidence`,
+`contact_channel`, `source_refs`, `criteria_version`.
 
 Champs utiles mais facultatifs : `agency`, `revenue_band`, `competitors`,
 `language_of_site`, `betting_license_ref`.
@@ -422,18 +445,42 @@ vérifiables.
 
 ---
 
-## 9. Conformité
+## 9. Conformité et éligibilité
+
+Les procédures complètes sont dans `docs/verification.md`. Ce qui suit est le
+niveau d'exigence, pas la manière de le prouver.
 
 | Contrôle | Quand | Suite si doute |
 |---|---|---|
 | Listes OFAC, UE, UK (entreprise et propriétaire) | Avant présélection (creator) et avant QUALIFIED (buyer) | COMPLIANCE REVIEW |
 | Étiquette d'agent étranger | Avant tout classement du créateur | REJECTED |
-| Lien au registre RKN | Avant présélection d'un créateur de 10 000 abonnés ou plus | REJECTED |
+| Registre Roskomnadzor, créateur de plus de 10 000 abonnés | Avant éligibilité | INELIGIBLE ; MANUAL_REVIEW si le lien est douteux |
+| Licence de paris (autorité du pays d'enregistrement) | Avant éligibilité d'une marque de paris | INELIGIBLE tant qu'elle n'est pas confirmée |
 | Présence de l'étiquette complète et du erid sur chaque publicité utilisée | À la collecte | Source écartée, cas compté |
-| Licence de paris | Avant QUALIFIED d'une marque de paris | TO REVIEW puis COMPLIANCE REVIEW |
 | Coordonnées professionnelles uniquement | À la collecte du contact | Contact écarté |
 | Opposition au démarchage | Avant toute action | OPT_OUT |
 | Base légale du traitement et du démarchage par pays | Avant mise en production | Validation juridique requise |
+
+### 9.1 Trois couches, jamais confondues
+
+1. **Faits officiels** : ce que dit la source, à une date, avec sa preuve.
+2. **Statut de vérification** : a-t-on pu rattacher ce fait à cette entité ?
+3. **Éligibilité** : ce que la combinaison des contrôles autorise.
+
+L'éligibilité se prononce parmi : ÉLIGIBLE, INÉLIGIBLE, SUSPENDU (PENDING ou
+MANUAL_REVIEW). Elle ne s'exprime jamais par des points.
+
+Une licence révoquée ne veut pas dire « vérification échouée » : le fait est
+établi (VERIFIED), et c'est l'éligibilité qui devient négative. On garde ainsi la
+mémoire de la raison de l'exclusion.
+
+### 9.2 Ce que ces contrôles ne couvrent pas
+
+Une licence confirmée n'autorise pas toute campagne : les règles de publicité du
+pays, de la plateforme et de la date restent à vérifier. L'inscription au registre
+ne prouve pas l'identité civile du créateur, seulement l'enregistrement de la
+page. Et une absence d'inscription n'est pas une fraude : on écrit « non trouvé à
+cette date ».
 
 Point de vigilance déjà signalé au plan : la période de tolérance publicitaire
 jusqu'au 31 décembre 2026 et le régime applicable ensuite — notamment pour
@@ -468,7 +515,8 @@ classement.
 Règle **V-03** — Un changement de version ne reclasse pas automatiquement
 l'existant : on décide explicitement de rejouer ou non, et on documente.
 
-Version actuelle : **1.0** (critères fixés par le donneur d'ordre).
+Version actuelle : **1.1** (critères fixés par le donneur d'ordre ; séparation
+score / éligibilité et renvoi aux procédures de vérification).
 
 ---
 
@@ -506,8 +554,11 @@ qualité de la collecte. Un identifiant invalide non plus.
    à la main**, avec leur score décomposé.
 6. La méthode de calcul de l'engagement par plateforme (fenêtre, moyenne ou
    médiane, source des vues).
-7. La structure de la base (tables, colonnes, relations).
-8. Des exemples de requêtes de recherche et de paramètres d'extraction qui ont
+7. Les procédures de vérification réglementaire et les statuts d'éligibilité
+   (§9 et `docs/verification.md`), y compris le jeu d'essai de 10 pages et
+   5 opérateurs de paris.
+8. La structure de la base (tables, colonnes, relations).
+9. Des exemples de requêtes de recherche et de paramètres d'extraction qui ont
    réellement produit un bon résultat.
 
 ### Intern 3 → Intern 2
@@ -542,20 +593,34 @@ l'automatisation s'ils ne sont pas tranchés :
    doit être validée ou remplacée. Sans elle, un score de 74 n'est pas reproductible.
 2. **Calcul de l'engagement** : fenêtre exacte, moyenne ou médiane, et source des
    vues pour chaque plateforme (VK Video, Twitch, Rutube, Telegram, YouTube).
-3. **Vérification du lien au registre RKN** : quel format de lien est accepté, et
-   comment le script confirme que la page correspond bien au créateur.
-4. **Vérification d'une licence de paris** : quelle source officielle fait foi.
-5. **Définition d'« audience adulte »** pour placer une marque de paris : âge
+3. **Service de vérification du registre RKN** : URL et domaine officiels exacts,
+   et existence d'une recherche publique exhaustive. Si le registre n'est
+   consultable que via le lien fourni par le créateur, le statut maximal
+   raisonnable est PARTIAL, pas VERIFIED.
+4. **Table de couverture des plateformes** : obligation applicable, identifiant
+   technique exposé, lecture de l'audience. À établir avant de coder le module A.
+5. **Accès automatisé aux registres** (RKN, FNS) : structure des pages, débit,
+   protection anti-robot, fréquence de mise à jour.
+6. **Autorités et registres par pays de la CEI**, et politique pour un acheteur
+   non vérifiable : attente, ou prospection acceptée avec le risque écrit.
+7. **Normalisation figée** des URL, noms juridiques, domaines et libellés
+   d'activité : écrite une fois, testée, pas réinventée à chaque intégration.
+8. **Définition d'« audience adulte »** pour placer une marque de paris : âge
    déclaré de l'audience, contenu, ou les deux.
-6. **Grille d'audit ProveItGo** : ce que l'audit contrôle exactement, et qui le
+9. **Grille d'audit ProveItGo** : ce que l'audit contrôle exactement, et qui le
    signe. C'est la porte d'entrée du vivier.
-7. **Créateur russophone établi hors de Russie** et **entreprise hors CEI** :
-   exclus ou acceptés au cas par cas ?
-8. **Marques de casino et pour adultes** : décision de ProveItGo attendue (X-03).
-9. **Répartition du quota** de 10 messages par semaine entre créateurs et
-   acheteurs.
-10. **Liste des clients existants**, pour ne pas prospecter un client.
-11. **Validation juridique** du traitement des données et du démarchage par pays,
+10. **Créateur russophone établi hors de Russie** et **entreprise hors CEI** :
+    exclus ou acceptés au cas par cas ?
+11. **Marques de casino et pour adultes** : décision de ProveItGo attendue (X-03).
+12. **Répartition du quota** de 10 messages par semaine entre créateurs et
+    acheteurs.
+13. **Liste des clients existants**, pour ne pas prospecter un client.
+14. **Conflit de rôles** entre le Playbook et la répartition proposée pour les
+    vérifications : voir `docs/verification.md` §10. La même responsabilité y est
+    attribuée deux fois, et l'architecture n'est plus attribuée à personne.
+15. **Source de vérité unique** : les critères restent ici, les procédures dans
+    l'autre document. Le Skill et la base doivent en découler, jamais diverger.
+16. **Validation juridique** du traitement des données et du démarchage par pays,
     y compris le calendrier 2027 pour Telegram et YouTube.
 
 ---
