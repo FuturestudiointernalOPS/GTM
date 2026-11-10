@@ -16,3 +16,4 @@ TELEGRAM_CHAT_ID = optional("TELEGRAM_CHAT_ID")
 # clear message instead of failing at the network level.
 EXA_API_KEY = optional("EXA_API_KEY")
 APIFY_API_KEY = optional("APIFY_API_KEY")
+SERPAPI_API_KEY = optional("SERPAPI_API_KEY")

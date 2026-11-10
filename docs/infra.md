@@ -444,24 +444,25 @@ python -m pytest -q                      # the offline test suite
 
 Deliberately **not** in this step: reading replies, buttons, approvals, gateway as a service. That is the Hermes side and it stays on the Next steps list.
 
-## 4e. Web search (Exa + Apify)
+## 4e. Web search (Exa, SerpApi + Apify)
 
-Goal: the pipeline can find a page and read it. Two services, two jobs, never the same job twice.
+Goal: the pipeline can find a page and read it. Three services, three jobs, never the same job twice.
 
 | Service | Job | Where the key comes from |
 |---|---|---|
 | **Exa** | Semantic web search: find a company site, a creator profile, recent activity. Returns URLs, titles and dates. | dashboard.exa.ai → `EXA_API_KEY` |
+| **SerpApi** | Classic engine search with `site:`, quotes and `-terms`; runs the supervisor's original query pool on Google (other engines pass through). Returns URLs, titles and snippets. | serpapi.com/manage-api-key → `SERPAPI_API_KEY` |
 | **Apify** | Run an Actor that extracts structured rows from public pages (search results, VK, Telegram, Twitch). | console.apify.com → Account → Integrations → `APIFY_API_KEY` |
 
-Code: `integrations/exa.py` and `integrations/apify.py`. Tests: `tests/test_exa.py`,
-`tests/test_apify.py`, `tests/test_telegram_directory.py`,
-`tests/test_creator_hunt.py`, `tests/test_buyer_hunt.py`
-(no network, the SDK is replaced by a fake).
+Code: `integrations/exa.py`, `integrations/serpapi.py` and `integrations/apify.py`.
+Tests: `tests/test_exa.py`, `tests/test_serpapi.py`, `tests/test_apify.py`,
+`tests/test_telegram_directory.py`, `tests/test_creator_hunt.py`,
+`tests/test_buyer_hunt.py` (no network, HTTP or SDK replaced by a fake).
 
 Usage:
 
 ```python
-from integrations import exa, apify
+from integrations import exa, serpapi, apify
 
 # 1. Find candidate pages. Text is optional and billed.
 rows = exa.search(
@@ -469,6 +470,12 @@ rows = exa.search(
     num_results=10,
     include_domains=["vk.com", "store.steampowered.com"],
     start_published_date="2026-01-01",
+)
+
+# 1b. Or run the classic form of the query pool through SerpApi.
+engine_rows = serpapi.search(
+    "site:twitch.tv стример CS2 -казино",
+    num_results=10,
 )
 
 # 2. Read them with the Actor that fits the platform.
@@ -486,15 +493,16 @@ Rules the code enforces:
 - `num_results` is capped at 100, and `max_items` stops an Actor once that many rows exist, which caps the bill for pay-per-result Actors;
 - `wait_seconds` (default 300) bounds the wait. A run still `RUNNING` is reported with its run id, **never started again**: a second run is a second bill;
 - Exa rate limits, timeouts and 5xx are retried 4 times with growing delays; a 400 is reported immediately;
-- API keys are never logged; for Apify transport errors only the exception type is kept, because the request URL can carry the token.
+- SerpApi applies the same retry rule, keeps the classic operators, and masks the key if the API echoes it;
+- API keys are never logged; for Apify and SerpApi transport errors only the exception type is kept, because the request URL can carry the token or key.
 
-Setup, once: put both keys in `.env` (`chmod 600`), never in the code or a commit. The settings are read at each call, so nothing has to restart.
+Setup, once: put the three keys in `.env` (`chmod 600`), never in the code or a commit. The settings are read at each call, so nothing has to restart.
 
 The two hunts use both services through one shared step:
 
 | File | Job |
 |---|---|
-| `workflows/search.py` | clean queries, run Exa discovery, deduplicate by URL, run the optional Apify extraction |
+| `workflows/search.py` | clean queries, run Exa or SerpApi discovery, deduplicate by URL, run the optional Apify extraction |
 | `workflows/creator_hunt.py` | allowed creator platforms, Russian/English queries, platform label; out-of-scope pages are dropped |
 | `workflows/buyer_hunt.py` | buyer-family queries, social platforms excluded; betting stays out until the licence check exists |
 
@@ -576,9 +584,10 @@ Rules the wrapper enforces:
 | Telegram code (offline) | `python -m pytest -q` | all tests pass, no network | ✓ |
 | Telegram unconfigured | `python -m tests.manual_check_telegram` with an empty `.env` | clear message naming the two settings, exit 1 | ✓ |
 | Telegram real send | `python -m tests.manual_check_telegram` with the real token | `Sent, message id: N` | pending, needs the bot token |
-| Search layer (offline) | `python -m pytest -q` | Exa, Apify and both hunt paths pass, no network | ✓ |
+| Search layer (offline) | `python -m pytest -q` | Exa, SerpApi, Apify and both hunt paths pass, no network | ✓ |
 | Telegram directory (offline) | `python -m pytest -q` | paid Actor mocked; input, cost ceiling, cursor and normalization tested | ✓ |
 | Exa real search | `python -c "from integrations import exa; print(exa.search('gaming studio Russia', num_results=3))"` with `EXA_API_KEY` | 3 rows with `url` and `title` | pending, needs the Exa key |
+| SerpApi real search | `python -c "from integrations import serpapi; print(serpapi.search('site:twitch.tv стример CS2 -казино', num_results=3))"` with `SERPAPI_API_KEY` | 3 rows with `url` and `snippet`; counts against the monthly quota | pending, needs the SerpApi key |
 | Apify real run | same pattern with `apify.run_actor(...)` on a cheap Actor | rows from the dataset | pending, needs the Apify token |
 
 ## 6. Adding a team member's SSH key

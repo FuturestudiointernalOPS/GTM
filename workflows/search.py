@@ -8,21 +8,25 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from integrations import apify, exa
+from integrations import apify, exa, serpapi
 
 log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
 class SearchSpec:
-    """One search request: text, attribution id and optional filters.
+    """One search request: text, attribution id, service and optional filters.
 
     ``query_id`` is what the tracker stores as ``query_used``. It is optional
     so a plain string query still works and falls back to its own text.
+    ``service`` selects the backend: ``exa`` (natural language) or ``serpapi``
+    (classic operators). ``engine`` is only used by SerpApi.
     """
 
     text: str
     query_id: str | None = None
+    service: str = "exa"
+    engine: str | None = None
     include_domains: tuple[str, ...] = ()
     exclude_domains: tuple[str, ...] = ()
     exclude_text: tuple[str, ...] = ()
@@ -92,24 +96,21 @@ def discover_specs(
     start_published_date: str | None = None,
     with_text: bool = False,
 ) -> list[dict]:
-    """Run every spec through Exa and return unique pages, in spec order.
+    """Run every spec through its backend and return unique pages.
 
-    Each page carries ``query`` (the natural-language text sent) and
-    ``query_used`` (the stable id from the pool, or the text for ad-hoc
-    queries). When two specs find the same URL, the first one keeps the
-    attribution, because the second did not discover a new target.
+    Each page carries ``query`` (the text sent) and ``query_used`` (the stable
+    id from the pool, or the text for ad-hoc queries). When two specs find the
+    same URL, the first one keeps the attribution, because the second did not
+    discover a new target.
     """
     seen: set[str] = set()
     pages: list[dict] = []
     for spec in specs:
         if not spec.text or not spec.text.strip():
             raise ValueError("Exa query must not be empty")
-        rows = exa.search(
-            spec.text,
+        rows = _run_spec(
+            spec,
             num_results=num_results,
-            include_domains=spec.include_domains or None,
-            exclude_domains=spec.exclude_domains or None,
-            exclude_text=spec.exclude_text or None,
             start_published_date=start_published_date,
             with_text=with_text,
         )
@@ -127,8 +128,39 @@ def discover_specs(
                     "query_used": query_used,
                 }
             )
-        log.info("Exa discovery: %s page(s) after %r", len(pages), spec.text)
+        log.info("Search discovery: %s page(s) after %r", len(pages), spec.text)
     return pages
+
+
+def _run_spec(
+    spec: SearchSpec,
+    *,
+    num_results: int,
+    start_published_date: str | None,
+    with_text: bool,
+) -> list[dict]:
+    """Call the backend named by the spec and return its rows."""
+    if spec.service == "exa":
+        return exa.search(
+            spec.text,
+            num_results=num_results,
+            include_domains=spec.include_domains or None,
+            exclude_domains=spec.exclude_domains or None,
+            exclude_text=spec.exclude_text or None,
+            start_published_date=start_published_date,
+            with_text=with_text,
+        )
+    if spec.service == "serpapi":
+        if start_published_date:
+            raise ValueError(
+                "start_published_date is only supported by Exa, not SerpApi"
+            )
+        return serpapi.search(
+            spec.text,
+            engine=spec.engine or serpapi.DEFAULT_ENGINE,
+            num_results=num_results,
+        )
+    raise ValueError(f"Unknown search service: {spec.service!r}")
 
 
 def extract(

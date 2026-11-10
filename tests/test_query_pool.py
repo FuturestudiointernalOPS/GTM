@@ -45,6 +45,40 @@ def test_the_supervisor_example_is_converted_for_exa():
     assert query.include_domains == ("twitch.tv",)
 
 
+def test_engine_text_adds_site_and_negative_operators():
+    query = _model("twitch", "cs2")
+    text = query.engine_text()
+
+    assert text.startswith("русскоязычные стримеры CS2 Twitch")
+    assert "site:twitch.tv" in text
+    assert "-site:instagram.com" in text
+    assert "-site:facebook.com" in text
+    assert "-казино" in text
+    assert "-слоты" in text
+    assert "-торрент" in text
+    assert text.count("site:twitch.tv") == 1
+
+
+def test_engine_spec_selects_the_classic_backend():
+    query = _model("twitch", "cs2")
+    spec = query.as_engine_spec(engine="yandex")
+
+    assert spec.service == "serpapi"
+    assert spec.engine == "yandex"
+    assert spec.query_id == query.id
+    assert spec.text == query.engine_text()
+    assert spec.include_domains == ()
+    assert spec.exclude_text == ()
+
+
+def test_a_plan_converts_to_engine_specs():
+    specs = qp.engine_specs(qp.creator_plan(1))
+
+    assert len(specs) == 12
+    assert all(spec.service == "serpapi" for spec in specs)
+    assert all(spec.query_id for spec in specs)
+
+
 def test_each_platform_template_keeps_its_domain_filter():
     assert _model("twitch", "cs2").include_domains == ("twitch.tv",)
     assert _model("vk_live", "cs2").include_domains == ("vk.com", "vkvideo.ru")

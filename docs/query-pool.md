@@ -2,26 +2,35 @@
 
 Ce document reprend le pool fourni par le superviseur pour le stagiaire 3 :
 environ 100 requêtes, à faire tourner par rotation d'environ 25 par semaine.
-Le pool est écrit pour un moteur classique (SerpApi, Google, Yandex) ; le code
-le convertit pour Exa, qui ne comprend ni `site:`, ni les guillemets, ni `-`.
+Le pool est écrit pour un moteur classique (SerpApi, Google, Yandex). Le code
+sait l'exécuter de deux façons : la forme naturelle pour Exa, et la forme
+classique (`site:`, guillemets, `-mot`) pour SerpApi.
 
 ## 1. Ce qui est implémenté
 
 | Élément | Rôle |
 |---|---|
-| `workflows/query_pool.py` | catalogue, variantes Exa, filtres, rotation hebdomadaire, identifiants de suivi |
-| `workflows/search.py` | exécution d'une requête avec ses propres domaines et exclusions, dédoublonnage |
+| `workflows/query_pool.py` | catalogue, variantes Exa et SerpApi, filtres, rotation hebdomadaire, identifiants de suivi |
+| `workflows/search.py` | exécution d'une requête sur Exa ou SerpApi, dédoublonnage, attribution |
 | `workflows/creator_hunt.py` (`hunt_plan`) | exécute un plan créateur et étiquette la plateforme |
 | `workflows/buyer_hunt.py` (`hunt_plan`) | exécute un plan acheteur |
 | `integrations/exa.py` | expose les filtres de texte d'Exa (`include_text`, `exclude_text`) |
+| `integrations/serpapi.py` | exécute la forme classique sur Google (ou un autre moteur SerpApi) |
 
 Chaque requête porte deux formes :
 
 - `text` : la phrase naturelle envoyée à Exa ;
-- `engine_query` : la forme d'origine pour un moteur classique, conservée pour
-  l'audit et une future intégration SerpApi/Yandex ;
+- `engine_query` : la forme d'origine pour un moteur classique ;
 - `include_domains` : remplacement de `site:` ;
 - `exclude_text` : remplacement des `-mot`.
+
+Pour SerpApi, `engine_text()` assemble la requête d'origine avec les opérateurs
+`site:`, `-site:` et `-mot`. Exemple :
+
+```text
+русскоязычные стримеры CS2 Twitch site:twitch.tv -site:instagram.com \
+  -site:facebook.com -казино -слоты -заносы -читы -взлом -скачать -торрент
+```
 
 Exemple du superviseur :
 
@@ -116,13 +125,26 @@ from workflows.creator_hunt import hunt_plan
 from workflows.query_pool import buyer_plan, creator_plan, week_plan
 
 plan = creator_plan(week=45)          # 12 requêtes, ou 6 en semaine CEI
-result = hunt_plan(plan)              # pages avec query_used + plateforme
+result = hunt_plan(plan)              # Exa : pages avec query_used + plateforme
 
 full_week = week_plan(week=45)        # 25 requêtes, ou 21 en semaine CEI
 buyers = buyer_plan(week=45)          # betting exclu par défaut
 ```
 
-Sans clé Exa, ces appels échouent avec un message clair et ne coûtent rien.
+Le même plan peut tourner sur un moteur classique :
+
+```python
+from workflows.query_pool import engine_specs
+from workflows.search import discover_specs
+
+pages = discover_specs(engine_specs(plan, engine="google"), num_results=10)
+```
+
+Chaque page garde le même `query_used`. Sans clé Exa ou SerpApi, l'appel
+échoue avec un message clair et ne coûte rien. SerpApi renvoie un extrait
+(`snippet`), pas le corps de la page : `text` reste vide pour ce service.
+Le filtre `start_published_date` n'existe que pour Exa ; SerpApi le refuse
+explicitement plutôt que de l'ignorer.
 
 ## 7. Test de la semaine 1
 
@@ -130,8 +152,13 @@ Le test sert aussi à vérifier que les moteurs indexent bien les posts Telegram
 et les domaines actuels de VK Video.
 
 1. Prendre un échantillon d'environ **20 requêtes** dans le plan de la semaine.
-2. Les faire tourner sur les trois services prévus. SerpApi ne propose que
-   250 recherches par mois sur l'offre gratuite : compter les appels.
+2. Les faire tourner sur trois services :
+   - Exa, avec la forme naturelle ;
+   - SerpApi sur Google, avec la forme classique ;
+   - SerpApi sur un second moteur (`engine="yandex"` ou `"bing"`), à valider
+     pendant ce test : les paramètres propres à Yandex ne sont pas encore figés.
+   SerpApi ne propose que 250 recherches par mois sur l'offre gratuite :
+   compter les appels.
 3. Pour chaque requête, lire les **10 premiers résultats** et compter :
    - les cibles **valides** : russophone, gaming, taille plausible
      (5 000–300 000 abonnés pour un créateur), catégorie non exclue ;
@@ -152,8 +179,10 @@ is_new, valid, total_valid, decision, notes
 
 ## 8. Limites actuelles
 
-- Seuls Exa et Apify sont branchés. Une comparaison sur trois services suppose
-  d'ajouter SerpApi ou Yandex, avec leurs clés et leur quota.
+- Exa et SerpApi sont branchés. SerpApi fonctionne avec Google par défaut ;
+  Yandex et Bing passent par le même module mais leurs paramètres propres
+  restent à valider par le test de la semaine 1. Apify sert à l'extraction et
+  à l'annuaire Telegram, pas à la recherche textuelle.
 - Le tracker (Baserow) n'existe pas encore : `query_used` est produit par les
   workflows et devra être persisté par le module de base de données.
 - Le jugement « cible valide » du test de la semaine 1 reste humain : aucune

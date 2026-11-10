@@ -96,6 +96,33 @@ class Query:
             exclude_text=self.exclude_text,
         )
 
+    def engine_text(self) -> str:
+        """Build the classic-engine query from the original form and filters.
+
+        ``site:`` replaces ``include_domains``, ``-site:`` replaces
+        ``exclude_domains`` and ``-term`` replaces ``exclude_text``. A filter
+        already present in the original query is not added twice.
+        """
+        parts = [self.engine_query or self.text]
+        present = parts[0].lower()
+        additions = [f"site:{domain}" for domain in self.include_domains]
+        additions += [f"-site:{domain}" for domain in self.exclude_domains]
+        additions += [f"-{term}" for term in self.exclude_text]
+        for addition in additions:
+            if addition.lower() not in present:
+                parts.append(addition)
+                present += " " + addition.lower()
+        return " ".join(parts)
+
+    def as_engine_spec(self, *, engine: str = "google") -> SearchSpec:
+        """Convert to a SerpApi request using the classic-engine syntax."""
+        return SearchSpec(
+            text=self.engine_text(),
+            query_id=self.id,
+            service="serpapi",
+            engine=engine,
+        )
+
 
 @dataclass(frozen=True)
 class CreatorTemplate:
@@ -491,6 +518,15 @@ def all_creator_model_queries() -> tuple[Query, ...]:
         for template in CREATOR_TEMPLATES
         for game in GAMES
     )
+
+
+def engine_specs(
+    queries: Sequence[Query],
+    *,
+    engine: str = "google",
+) -> tuple[SearchSpec, ...]:
+    """Convert a plan to SerpApi requests, one per query."""
+    return tuple(query.as_engine_spec(engine=engine) for query in queries)
 
 
 def betting_compatible_games() -> tuple[Game, ...]:

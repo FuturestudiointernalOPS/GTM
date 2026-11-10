@@ -103,3 +103,45 @@ def test_an_empty_spec_is_refused(monkeypatch):
 
     with pytest.raises(ValueError, match="must not be empty"):
         search.discover_specs([SearchSpec("   ")])
+
+
+def test_discover_specs_dispatches_to_serpapi(monkeypatch):
+    seen = {}
+
+    def fake_serpapi(text, **options):
+        seen.update(text=text, **options)
+        return [_row("https://brand.example")]
+
+    monkeypatch.setattr(search.serpapi, "search", fake_serpapi)
+
+    pages = search.discover_specs(
+        [
+            SearchSpec(
+                "q site:example.ru -казино",
+                query_id="buyer.ads.esports",
+                service="serpapi",
+                engine="google",
+            )
+        ],
+        num_results=10,
+    )
+
+    assert seen == {
+        "text": "q site:example.ru -казино",
+        "engine": "google",
+        "num_results": 10,
+    }
+    assert pages[0]["query_used"] == "buyer.ads.esports"
+
+
+def test_serpapi_refuses_the_exa_only_date_filter():
+    with pytest.raises(ValueError, match="start_published_date"):
+        search.discover_specs(
+            [SearchSpec("q", service="serpapi")],
+            start_published_date="2026-01-01",
+        )
+
+
+def test_an_unknown_service_is_refused():
+    with pytest.raises(ValueError, match="Unknown search service"):
+        search.discover_specs([SearchSpec("q", service="bing")])
