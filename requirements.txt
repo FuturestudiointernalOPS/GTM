@@ -1,0 +1,76 @@
+# GTM Tool — frozen dependency list (runtime).
+#
+# Target: Python 3.12 (the server runs 3.12.3).
+# Every version is pinned. This file is the only source of truth for what the
+# project is allowed to import.
+#
+# Changing this list:
+#   1. edit the version here, never `pip install` something missing from here;
+#   2. rebuild a fresh virtual environment and install from this file;
+#   3. run the tests;
+#   4. open a pull request. The reviewer accepts or refuses the change.
+#
+# A library that is not in this file must not be imported in the code.
+
+# --- AI -------------------------------------------------------------------
+# Model client. DeepSeek today; OpenRouter/Kimi later, through the same client
+# (both speak the OpenAI protocol, only the address and model name change).
+openai==3.49.0
+
+# --- Settings -------------------------------------------------------------
+# Reads the .env file (keys, provider, model). Used by config/environment.py.
+python-dotenv==1.2.4
+
+# --- Data contracts -------------------------------------------------------
+# Declares the shape of a company, a contact, a creator and the JSON answer of
+# the model, and rejects anything that does not fit. One schema per intern
+# hand-over, so a malformed record fails at the border instead of in Baserow.
+pydantic==2.14.3
+
+# --- HTTP and resilience --------------------------------------------------
+# Single HTTP client for our own calls: Baserow, Telegram, any page we fetch.
+# The model client ships its own HTTP layer as a dependency; we never import it
+# directly, so all of our code goes through this one.
+httpx==0.28.1
+
+# Retries with growing delays. External services fail intermittently (Apify
+# run in error, Exa timeout, model rate limit); this keeps the workflow going
+# without writing retry loops by hand.
+tenacity==9.2.1
+
+# --- External services ----------------------------------------------------
+# Web search: find a company site, a creator profile, recent activity.
+exa-py==2.28.0
+
+# Structured extraction from public pages (site content, contact pages).
+apify-client==3.5.0
+
+# --- Matching and pages ---------------------------------------------------
+# Name comparison for deduplication and sanctions screening: tolerates
+# Cyrillic/Latin spelling variants, legal-form suffixes and small typos.
+rapidfuzz==3.14.6
+
+# Reads a candidate site to confirm it really belongs to the company
+# (title, legal name, address, phone) before a contact is attached to it.
+beautifulsoup4==4.15.0
+
+# ---------------------------------------------------------------------------
+# Deliberately NOT included, and why — do not add these without a decision:
+#
+#   pandas        record volume stays low; the standard csv/json modules and
+#                 pydantic are enough. Reconsider only if a run manipulates
+#                 more than a few tens of thousands of rows.
+#   python-telegram-bot
+#                 Hermes already owns the messaging gateway; scripts only send
+#                 a message or read a decision through the plain HTTP client.
+#                 A second bot framework would compete with Hermes for updates.
+#   requests      our code uses httpx only. It still arrives indirectly
+#                 through exa-py, which is fine, but never import it directly.
+#   lxml          the built-in HTML parser of beautifulsoup4 is sufficient.
+#   APScheduler / schedule
+#                 cron is already the scheduler on the server.
+#   structlog     the standard logging module with a JSON formatter covers
+#                 the activity log and the cost log.
+#   pydantic-settings
+#                 config/environment.py plus python-dotenv already do the job;
+#                 migrating to it is a separate decision.

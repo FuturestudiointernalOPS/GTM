@@ -396,13 +396,169 @@ Open pull requests: `intern1/ai-layer`, then `intern1/config` (based on `intern1
 
 **Switching AI** needs no code change in the workflows: set `AI_PROVIDER` and `AI_MODEL` in `.env`. Adding a provider (for example OpenRouter/Kimi) means writing `ai/openrouter.py` with its `chat()` and adding it to `get_ai_provider()`.
 
+**Dependencies are frozen:** `requirements.txt` holds the runtime libraries, `requirements-dev.txt` adds the test and lint tools (laptops only, it includes the runtime file). Every version is pinned, and no library may be imported unless it is listed there. Changing the list means editing the file, reinstalling in a fresh environment, running the tests, then opening a pull request.
+
 **Run the manual check on a laptop** (repo root, venv on, `.env` with `DEEPSEEK_API_KEY`):
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install openai python-dotenv
+pip install -r requirements.txt
 PYTHONPATH=. python tests/manual_check_ai.py
 ```
+
+## 4d. Telegram (minimal mode)
+
+Goal of this step: the supervisor receives what the pipeline produces. Nothing else. The bot only sends, it never reads, so no gateway has to run and two processes never compete for the same updates.
+
+| What | Where |
+|---|---|
+| Bot token | @BotFather, then the server's `.env` (copy in Bitwarden) |
+| Chat id | the group or person to notify, in `.env` |
+| Code | `integrations/telegram.py` |
+| Settings | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` (in `.env` and `.env.example`) |
+
+Rules the code enforces:
+
+- **plain text only**, no Markdown or HTML: a company name containing `<`, `&`, `*` or `_` can never make Telegram refuse the message;
+- messages longer than 4096 characters are cut;
+- rate limit (429) and Telegram server errors are retried 4 times with growing delays; a real refusal (400, 403) is reported immediately, without retrying;
+- the token is never logged and never copied into an error message, so a log file cannot leak it;
+- `send_message_safely()` never raises: a notification problem cannot abort a collection or enrichment run, and the text stays in the log.
+
+Setup, once:
+
+1. Create the bot with @BotFather, store the token in Bitwarden, then put it in the server's `.env` (`chmod 600`).
+2. From the account that must receive the alerts, send one message to the bot, then read the chat id:
+   ```bash
+   curl -s "https://api.telegram.org/bot<TOKEN>/getUpdates" | head -c 600
+   ```
+   This manual call is a setup step only: nothing in the project polls.
+3. Put the chat id in `.env`. Nothing to restart, the values are read at each send.
+
+Checks:
+
+```bash
+python -m tests.manual_check_telegram    # one real message
+python -m pytest -q                      # the offline test suite
+```
+
+Deliberately **not** in this step: reading replies, buttons, approvals, gateway as a service. That is the Hermes side and it stays on the Next steps list.
+
+## 4e. Web search (Exa, SerpApi + Apify)
+
+Goal: the pipeline can find a page and read it. Three services, three jobs, never the same job twice.
+
+| Service | Job | Where the key comes from |
+|---|---|---|
+| **Exa** | Semantic web search: find a company site, a creator profile, recent activity. Returns URLs, titles and dates. | dashboard.exa.ai → `EXA_API_KEY` |
+| **SerpApi** | Classic engine search with `site:`, quotes and `-terms`; runs the supervisor's original query pool on Google (other engines pass through). Returns URLs, titles and snippets. | serpapi.com/manage-api-key → `SERPAPI_API_KEY` |
+| **Apify** | Run an Actor that extracts structured rows from public pages (search results, VK, Telegram, Twitch). | console.apify.com → Account → Integrations → `APIFY_API_KEY` |
+
+Code: `integrations/exa.py`, `integrations/serpapi.py` and `integrations/apify.py`.
+Tests: `tests/test_exa.py`, `tests/test_serpapi.py`, `tests/test_apify.py`,
+`tests/test_telegram_directory.py`, `tests/test_creator_hunt.py`,
+`tests/test_buyer_hunt.py` (no network, HTTP or SDK replaced by a fake).
+
+Usage:
+
+```python
+from integrations import exa, serpapi, apify
+
+# 1. Find candidate pages. Text is optional and billed.
+rows = exa.search(
+    "gaming studio Russia",
+    num_results=10,
+    include_domains=["vk.com", "store.steampowered.com"],
+    start_published_date="2026-01-01",
+)
+
+# 1b. Or run the classic form of the query pool through SerpApi.
+engine_rows = serpapi.search(
+    "site:twitch.tv стример CS2 -казино",
+    num_results=10,
+)
+
+# 2. Read them with the Actor that fits the platform.
+items = apify.run_actor(
+    "apify/google-search-scraper",
+    {"queries": "gaming studio Russia", "maxPagesPerQuery": 1},
+    max_items=20,
+)
+```
+
+Rules the code enforces:
+
+- **database first** (D-03): a search costs money, so a record already in Baserow is updated instead of re-searched;
+- an Exa row is a **lead, not a proof**: the workflow attaches the URL and the read date before a fact is stored;
+- `num_results` is capped at 100, and `max_items` stops an Actor once that many rows exist, which caps the bill for pay-per-result Actors;
+- `wait_seconds` (default 300) bounds the wait. A run still `RUNNING` is reported with its run id, **never started again**: a second run is a second bill;
+- Exa rate limits, timeouts and 5xx are retried 4 times with growing delays; a 400 is reported immediately;
+- SerpApi applies the same retry rule, keeps the classic operators, and masks the key if the API echoes it;
+- API keys are never logged; for Apify and SerpApi transport errors only the exception type is kept, because the request URL can carry the token or key.
+
+Setup, once: put the three keys in `.env` (`chmod 600`), never in the code or a commit. The settings are read at each call, so nothing has to restart.
+
+The two hunts use both services through one shared step:
+
+| File | Job |
+|---|---|
+| `workflows/search.py` | clean queries, run Exa or SerpApi discovery, deduplicate by URL, run the optional Apify extraction |
+| `workflows/creator_hunt.py` | allowed creator platforms, Russian/English queries, platform label; out-of-scope pages are dropped |
+| `workflows/buyer_hunt.py` | buyer-family queries, social platforms excluded; betting stays out until the licence check exists |
+
+```python
+from workflows.creator_hunt import hunt
+
+result = hunt()  # discovery only: no Apify call
+result = hunt(
+    ["стример киберспорт Россия"],
+    actor_id="apify/vk-scraper",
+    actor_input={"startUrls": ["https://vk.com/red"]},
+    max_items=20,
+)
+# {"queries": [...], "pages": [...], "profiles": [...]}
+```
+
+The Actor id and its input are **not hardcoded**: they come from Intern 2's
+extraction contract (§12). Without an Actor, the hunt still returns discovery
+pages, so Exa works alone. A hunt collects and annotates only: it does not score,
+verify or write to Baserow, because a search result is not a proof (H-04).
+
+The rotating query pool (creator and buyer blocks, Exa conversion, weekly plan
+and `query_used` tracking) is documented in `docs/query-pool.md` and built by
+`workflows/query_pool.py`; each hunt exposes `hunt_plan` to run it.
+
+### Telegram directories (tgstat + telegramic)
+
+Dedicated wrapper around the paid directory Actor
+`jungle_synthesizer/tgstat-telegramic-group-directory-scraper`.
+
+| Item | Value |
+|---|---|
+| Price | **$1.60 / 1,000 records**, paid per event |
+| Cost ceiling | `max_items × $0.0016`, logged and returned with every run |
+| Account needed | Apify token only; no tgstat or telegramic account |
+| Code | `integrations/telegram_directory.py`, `workflows/creator_hunt.py` (`hunt_telegram`) |
+| Tests | `tests/test_telegram_directory.py` (Actor mocked, no paid run) |
+
+```python
+from workflows.creator_hunt import hunt_telegram
+
+result = hunt_telegram(max_items=100)  # about $0.16 at most
+result["candidates"]    # creator fields + directory_facts (growth, reach, rating)
+result["profiles"]      # raw Actor rows, unchanged
+result["resume_cursor"] # pass back to continue without paying twice
+```
+
+Rules the wrapper enforces:
+
+- `max_items` is always sent and caps the bill; the estimated ceiling is logged before the run and returned after it;
+- an unknown source, group type, category, region or ranking is refused **before** the run, because a typo would otherwise start a paid run with no useful rows;
+- tgstat has no Russia-only ranking: `global` plus Belarus, Kazakhstan, Uzbekistan and Kyrgyzstan is used, and each row keeps the `country` it was ranked in;
+- `games` and `sport` cover the gaming/esport labels of both directories;
+- a private tgstat listing keeps `handle` and `platform_url` empty instead of inventing them;
+- `resume_cursor` continues a crawl without paying again for delivered rows; it expires with the account's run-retention window (free tier: about 10 runs);
+- Telegram creators stay subject to the calendar constraint of scope §5.2 (campaigns before 2027 only).
 
 ## 5. Verification tests
 
@@ -425,6 +581,14 @@ PYTHONPATH=. python tests/manual_check_ai.py
 | Teammate access | `ssh hunter@<SERVER_IP>` from Abel's laptop | Logged in as hunter | ✓ |
 | AI layer | `PYTHONPATH=. python tests/manual_check_ai.py` (laptop) | `DeepSeekProvider`, `{'is_gaming': True, 'language': 'ru', ...}`, about 290 tokens | ✓ |
 | Unknown provider | `AI_PROVIDER=inconnu PYTHONPATH=. python tests/manual_check_ai.py` | `ValueError: Unknown AI_PROVIDER: 'inconnu'` | ✓ |
+| Telegram code (offline) | `python -m pytest -q` | all tests pass, no network | ✓ |
+| Telegram unconfigured | `python -m tests.manual_check_telegram` with an empty `.env` | clear message naming the two settings, exit 1 | ✓ |
+| Telegram real send | `python -m tests.manual_check_telegram` with the real token | `Sent, message id: N` | pending, needs the bot token |
+| Search layer (offline) | `python -m pytest -q` | Exa, SerpApi, Apify and both hunt paths pass, no network | ✓ |
+| Telegram directory (offline) | `python -m pytest -q` | paid Actor mocked; input, cost ceiling, cursor and normalization tested | ✓ |
+| Exa real search | `python -c "from integrations import exa; print(exa.search('gaming studio Russia', num_results=3))"` with `EXA_API_KEY` | 3 rows with `url` and `title` | pending, needs the Exa key |
+| SerpApi real search | `python -c "from integrations import serpapi; print(serpapi.search('site:twitch.tv стример CS2 -казино', num_results=3))"` with `SERPAPI_API_KEY` | 3 rows with `url` and `snippet`; counts against the monthly quota | pending, needs the SerpApi key |
+| Apify real run | same pattern with `apify.run_actor(...)` on a cheap Actor | rows from the dataset | pending, needs the Apify token |
 
 ## 6. Adding a team member's SSH key
 
@@ -481,5 +645,6 @@ After a reinstall, SSH warns `REMOTE HOST IDENTIFICATION HAS CHANGED`. Clear the
 - [ ] Telegram: Future Studio account (company phone number), bot, access limited to Henry, gateway as a service, reboot test
 - [ ] Decisions from Henry: DeepSeek instead of OpenRouter/Kimi, secrets sharing, off-site backup storage
 - [x] AI layer and central settings (pull requests `intern1/ai-layer` and `intern1/config`, waiting for review)
-- [ ] `requirements.txt` (for now: `openai`, `python-dotenv`)
+- [x] `requirements.txt` (runtime) and `requirements-dev.txt` (tests, lint), pinned and checked against Python 3.12
+- [x] Telegram notifications from Python (one-way, plain text, no gateway)
 - [ ] Weekly routine (Sunday): `hermes update --backup`, `hermes doctor`, backup + off-site copy, snapshot
