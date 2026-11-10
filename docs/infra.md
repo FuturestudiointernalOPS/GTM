@@ -396,13 +396,53 @@ Open pull requests: `intern1/ai-layer`, then `intern1/config` (based on `intern1
 
 **Switching AI** needs no code change in the workflows: set `AI_PROVIDER` and `AI_MODEL` in `.env`. Adding a provider (for example OpenRouter/Kimi) means writing `ai/openrouter.py` with its `chat()` and adding it to `get_ai_provider()`.
 
+**Dependencies are frozen:** `requirements.txt` holds the runtime libraries, `requirements-dev.txt` adds the test and lint tools (laptops only, it includes the runtime file). Every version is pinned, and no library may be imported unless it is listed there. Changing the list means editing the file, reinstalling in a fresh environment, running the tests, then opening a pull request.
+
 **Run the manual check on a laptop** (repo root, venv on, `.env` with `DEEPSEEK_API_KEY`):
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install openai python-dotenv
+pip install -r requirements.txt
 PYTHONPATH=. python tests/manual_check_ai.py
 ```
+
+## 4d. Telegram (minimal mode)
+
+Goal of this step: the supervisor receives what the pipeline produces. Nothing else. The bot only sends, it never reads, so no gateway has to run and two processes never compete for the same updates.
+
+| What | Where |
+|---|---|
+| Bot token | @BotFather, then the server's `.env` (copy in Bitwarden) |
+| Chat id | the group or person to notify, in `.env` |
+| Code | `integrations/telegram.py` |
+| Settings | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` (in `.env` and `.env.example`) |
+
+Rules the code enforces:
+
+- **plain text only**, no Markdown or HTML: a company name containing `<`, `&`, `*` or `_` can never make Telegram refuse the message;
+- messages longer than 4096 characters are cut;
+- rate limit (429) and Telegram server errors are retried 4 times with growing delays; a real refusal (400, 403) is reported immediately, without retrying;
+- the token is never logged and never copied into an error message, so a log file cannot leak it;
+- `send_message_safely()` never raises: a notification problem cannot abort a collection or enrichment run, and the text stays in the log.
+
+Setup, once:
+
+1. Create the bot with @BotFather, store the token in Bitwarden, then put it in the server's `.env` (`chmod 600`).
+2. From the account that must receive the alerts, send one message to the bot, then read the chat id:
+   ```bash
+   curl -s "https://api.telegram.org/bot<TOKEN>/getUpdates" | head -c 600
+   ```
+   This manual call is a setup step only: nothing in the project polls.
+3. Put the chat id in `.env`. Nothing to restart, the values are read at each send.
+
+Checks:
+
+```bash
+python -m tests.manual_check_telegram    # one real message
+python -m pytest -q                      # the offline test suite
+```
+
+Deliberately **not** in this step: reading replies, buttons, approvals, gateway as a service. That is the Hermes side and it stays on the Next steps list.
 
 ## 5. Verification tests
 
@@ -425,6 +465,9 @@ PYTHONPATH=. python tests/manual_check_ai.py
 | Teammate access | `ssh hunter@<SERVER_IP>` from Abel's laptop | Logged in as hunter | ✓ |
 | AI layer | `PYTHONPATH=. python tests/manual_check_ai.py` (laptop) | `DeepSeekProvider`, `{'is_gaming': True, 'language': 'ru', ...}`, about 290 tokens | ✓ |
 | Unknown provider | `AI_PROVIDER=inconnu PYTHONPATH=. python tests/manual_check_ai.py` | `ValueError: Unknown AI_PROVIDER: 'inconnu'` | ✓ |
+| Telegram code (offline) | `python -m pytest -q` | all tests pass, no network | ✓ |
+| Telegram unconfigured | `python -m tests.manual_check_telegram` with an empty `.env` | clear message naming the two settings, exit 1 | ✓ |
+| Telegram real send | `python -m tests.manual_check_telegram` with the real token | `Sent, message id: N` | pending, needs the bot token |
 
 ## 6. Adding a team member's SSH key
 
@@ -481,5 +524,6 @@ After a reinstall, SSH warns `REMOTE HOST IDENTIFICATION HAS CHANGED`. Clear the
 - [ ] Telegram: Future Studio account (company phone number), bot, access limited to Henry, gateway as a service, reboot test
 - [ ] Decisions from Henry: DeepSeek instead of OpenRouter/Kimi, secrets sharing, off-site backup storage
 - [x] AI layer and central settings (pull requests `intern1/ai-layer` and `intern1/config`, waiting for review)
-- [ ] `requirements.txt` (for now: `openai`, `python-dotenv`)
+- [x] `requirements.txt` (runtime) and `requirements-dev.txt` (tests, lint), pinned and checked against Python 3.12
+- [x] Telegram notifications from Python (one-way, plain text, no gateway)
 - [ ] Weekly routine (Sunday): `hermes update --backup`, `hermes doctor`, backup + off-site copy, snapshot
