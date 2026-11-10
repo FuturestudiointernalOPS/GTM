@@ -6,3 +6,8 @@ AI_PROVIDER = optional("AI_PROVIDER", "deepseek")
 
 # Model name. Empty means "use the provider's default".
 AI_MODEL = optional("AI_MODEL")
+
+# Telegram notifications. Empty means "not configured": the notifier then
+# refuses with a clear message instead of failing at the network level.
+TELEGRAM_BOT_TOKEN = optional("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = optional("TELEGRAM_CHAT_ID")
