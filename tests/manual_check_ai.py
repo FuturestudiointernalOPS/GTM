@@ -1,11 +1,7 @@
-"""Manual check: send a fake creator to the AI layer and print the answer."""
-from dotenv import load_dotenv
+"""Manual check: send a fake creator to the configured AI and print the answer."""
+from ai import get_ai_provider
 
-load_dotenv()
-
-from ai.deepseek import DeepSeekProvider  # noqa: E402
-
-provider = DeepSeekProvider()
+provider = get_ai_provider()  # DeepSeek today; chosen by AI_PROVIDER in .env
 
 fake_creator = {
     "name": "Test creator",
@@ -15,5 +11,6 @@ fake_creator = {
 }
 
 result = provider.analyze_creator(fake_creator)
+print("Provider:", type(provider).__name__, "| model:", provider.model)
 print("Result:", result)
 print("Tokens:", provider.last_usage.total_tokens)
