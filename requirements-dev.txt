@@ -1,0 +1,20 @@
+# GTM Tool — frozen dependency list (development and testing).
+#
+# Installed on laptops only. The server installs requirements.txt alone.
+# Same rule: pinned versions, changes go through a pull request.
+
+-r requirements.txt
+
+# Test runner. Pinned like the rest so a laptop and CI agree.
+pytest==9.2.0
+
+# Coverage report, to see which rules (deduplication, qualification) are
+# actually exercised by the tests.
+pytest-cov==7.1.0
+
+# Simulates the answers of Baserow, Telegram, Exa and Apify without network
+# access, so the tests stay fast and never touch a real account.
+respx==0.23.1
+
+# Linter and formatter. One tool instead of flake8 + isort + black.
+ruff==0.17.4
