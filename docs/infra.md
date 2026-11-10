@@ -1,6 +1,6 @@
 # Infrastructure runbook — ProveItGo Creator Hunt
 
-Owner: Intern 1 (infrastructure) · Last updated: 5 November 2026 (evening)
+Owner: Intern 1 (infrastructure) · Last updated: 9 November 2026
 
 This file records how the server was built, step by step, so that someone new can rebuild it from this document alone. **It must never contain secrets** (passwords, API keys, private keys). Secrets live in Bitwarden.
 
@@ -27,8 +27,10 @@ One server (`vmi3726974`), one shared Linux account (`hunter`). Every team membe
 ```
 /home/hunter/
 ├── .ssh/authorized_keys     SSH public keys allowed to log in
-├── GTMTool/                 Python project (empty for now)
-│   └── .venv/               project virtual environment (Python 3.12.3)
+├── GTMTool/                 Python project (to be replaced by a clone of the GTM repo)
+│   ├── .venv/               project virtual environment (Python 3.12.3)
+│   └── .env                 DEEPSEEK_API_KEY (chmod 600) - never in Git
+├── backups/                 encrypted backups (*.tar.gz.age)
 ├── .hermes/                 Hermes Agent
 │   ├── config.yaml          settings (model, Docker sandbox, checkpoints)
 │   ├── .env                 secrets (DeepSeek API key) - never in Git
@@ -37,6 +39,8 @@ One server (`vmi3726974`), one shared Linux account (`hunter`). Every team membe
 │   └── logs/                agent.log, errors.log, egress-boot.log
 └── (crontab)                @reboot: starts iron-proxy after boot
 ```
+
+`~/.ssh/gtm_deploy` (read-only deploy key for the GitHub repo) is planned, not created yet.
 
 **Docker images:** `nousresearch/hermes-sandbox:desktop` (4.4 GB on disk, 1.2 GB download), `hello-world`.
 
@@ -78,8 +82,8 @@ One server (`vmi3726974`), one shared Linux account (`hunter`). Every team membe
 | Person | Key type | Status |
 |---|---|---|
 | Intern 1 | ed25519 | Installed |
-| Intern 2 | — | Pending |
-| Intern 3 | — | Pending |
+| Abel (teammate) | ed25519 | Installed |
+| Third intern | — | Pending |
 
 Rule: **one key per person**, so a key can be removed without affecting the others.
 
@@ -289,6 +293,117 @@ tmux attach -t travail       # come back after a disconnection
 
 Sessions do not survive a server reboot.
 
+### 4.18 First DeepSeek call from Python
+
+```bash
+cd ~/GTMTool && source .venv/bin/activate
+pip install openai python-dotenv
+nano .env                      # DEEPSEEK_API_KEY=...  (no quotes, no spaces)
+chmod 600 .env
+python test_deepseek.py        # "Yes, I'm working and ready to help." - 93 tokens
+```
+
+DeepSeek is OpenAI-compatible: the `openai` library is used with `base_url="https://api.deepseek.com/v1"` and `model="deepseek-v4-flash"`. Switching provider later means changing the base URL and model name, which the `AIProvider` layer will isolate. The test script will become `ai/deepseek.py`.
+
+Common mistake: a new SSH session starts in `~`, not `~/GTMTool`. Always `cd ~/GTMTool && source .venv/bin/activate` first (prompt shows `(.venv)`).
+
+### 4.19 Encrypted backup and restore test
+
+What is backed up: `~/.hermes` (without the 2.9 GB of reinstallable files), `GTMTool/.env`, `.ssh/authorized_keys` and the crontab. Archive size: about 1.6 MB.
+
+```bash
+sudo apt -y install age
+mkdir -p ~/backups
+crontab -l > ~/crontab-backup.txt
+tar -czf ~/backups/hermes-$(date +%F).tar.gz \
+  --exclude='.hermes/hermes-agent' --exclude='.hermes/tools' \
+  --exclude='.hermes/cache' --exclude='.hermes/installs' \
+  --exclude='.hermes/models_dev_cache.json' \
+  -C ~ .hermes GTMTool/.env .ssh/authorized_keys crontab-backup.txt
+age -p -o ~/backups/hermes-$(date +%F).tar.gz.age ~/backups/hermes-$(date +%F).tar.gz
+rm ~/backups/hermes-$(date +%F).tar.gz ~/crontab-backup.txt     # never keep the plain archive
+chmod 600 ~/backups/*.age
+```
+
+The age passphrase is in Bitwarden ("Sauvegarde Hermes - phrase age"). Without it the backup cannot be read.
+
+**Off-server copy** (from the laptop, temporary until an online storage is chosen):
+
+```bash
+mkdir -p ~/Backups/proveitgo
+scp proveitgo-hunter:~/backups/hermes-YYYY-MM-DD.tar.gz.age ~/Backups/proveitgo/
+```
+
+**Restore test** (done on the laptop, 9 November 2026, passed):
+
+```bash
+mkdir -p /tmp/restore-test && cd /tmp/restore-test
+age -d -o hermes.tar.gz ~/Backups/proveitgo/hermes-YYYY-MM-DD.tar.gz.age
+tar -tzf hermes.tar.gz | grep -E '\.hermes/\.env$|GTMTool/\.env|crontab-backup|authorized_keys'   # 4 lines
+tar -xzf hermes.tar.gz && tail -n 1 crontab-backup.txt                                             # the @reboot line
+cd ~ && rm -rf /tmp/restore-test     # decrypted files contain keys in clear
+```
+
+To restore on a rebuilt server: reinstall Hermes, extract the archive into `/home/hunter`, then `crontab crontab-backup.txt`.
+
+Current limits: manual (to redo every Sunday with the snapshot), and the off-site copy is a laptop. To automate once Henry picks a storage (for example Backblaze B2).
+
+### 4.20 Dangerous commands in scheduled runs
+
+Added at the end of `~/.hermes/config.yaml`:
+
+```yaml
+approvals:
+  mode: manual       # interactive sessions ask before a dangerous command
+  cron_mode: deny    # scheduled runs block dangerous commands
+```
+
+Checks: `grep -n "command_allowlist" ~/.hermes/config.yaml` returns nothing (no permanent allowlist), and `hermes doctor` stays green.
+
+Notes:
+- With the Docker backend, Hermes skips these checks because the container is the security boundary; `cron_mode: deny` is a second safety net if the backend ever changes.
+- Never answer **always** to an approval prompt: permanent allowlist entries are checked before `cron_mode: deny` (reported in Hermes issue #60505).
+- Never use `--yolo`.
+
+### 4.21 Housekeeping
+
+- Empty files named with 6 digits appeared in `~` after Hermes log lines were pasted into the terminal (`->` was read as a redirection). Removed with `find ~ -maxdepth 1 -type f -regextype egrep -regex '.*/[0-9]{6}' -empty -delete`. Rule: paste logs into chat, never into the terminal.
+- `~/.hermes/config.yaml.save` (nano emergency save after a disconnection) and `install-hermes.sh` removed.
+- Snapshot replaced by `hermes-proxy-ok-2026-11-05` (the plan keeps one snapshot: delete the old one first, only snapshot a known-good state).
+
+## 4b. Code workflow (GitHub)
+
+- Repository: `git@github.com:FuturestudiointernalOPS/GTM.git` (remote switched from HTTPS to SSH).
+- `main` holds `.gitignore` and the project skeleton from Henry's plan (empty folders kept with `.gitkeep`). The skeleton was first created on the server, then copied to the repo with `rsync` (excluding `.venv`, `.env`, `__pycache__`).
+- **Code is written on laptops, never on the server.** Each person works on a branch and opens a pull request; another intern reviews before merging into `main`.
+- The server only pulls validated code (`git pull`), through a read-only deploy key (to be added by a repo admin in Settings, Deploy keys).
+- Branch names: `intern1/<task>` (for example `intern1/ai-layer`, `intern1/config`, `intern1/docs-infra`). One task per branch, created from an up-to-date `main` (`git checkout main && git pull`). A branch that depends on another unmerged branch is created from it, and its pull request uses that branch as base.
+
+## 4c. AI layer (code, on laptops)
+
+Open pull requests: `intern1/ai-layer`, then `intern1/config` (based on `intern1/ai-layer`).
+
+| File | Role |
+|---|---|
+| `ai/provider.py` | `AIProvider` contract: each provider only implements `chat(system, user)`; `analyze_creator`, `analyze_buyer` and `generate_outreach` are shared, load their prompt from `ai/prompts/<name>.md` and parse a JSON answer |
+| `ai/deepseek.py` | `DeepSeekProvider`: OpenAI-compatible client, model from `.env` (default `deepseek-v4-flash`), keeps `last_usage` (tokens) for cost tracking |
+| `ai/prompts/analyze_creator.md` | Provisional prompt for technical tests; the real criteria come from Intern 2 |
+| `ai/__init__.py` | `get_ai_provider()` returns the provider named in `AI_PROVIDER`; unknown names stop with a clear error |
+| `config/environment.py` | Loads `.env` once; `require()` stops with "Missing setting: NAME", `optional()` returns a default |
+| `config/settings.py` | `AI_PROVIDER` (default `deepseek`) and `AI_MODEL` (empty = provider default) |
+| `.env.example` | List of settings without values (copy to `.env`) |
+| `tests/manual_check_ai.py` | Sends a fake Russian gaming creator through `get_ai_provider()` |
+
+**Switching AI** needs no code change in the workflows: set `AI_PROVIDER` and `AI_MODEL` in `.env`. Adding a provider (for example OpenRouter/Kimi) means writing `ai/openrouter.py` with its `chat()` and adding it to `get_ai_provider()`.
+
+**Run the manual check on a laptop** (repo root, venv on, `.env` with `DEEPSEEK_API_KEY`):
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install openai python-dotenv
+PYTHONPATH=. python tests/manual_check_ai.py
+```
+
 ## 5. Verification tests
 
 | Test | Command (from the laptop) | Expected | Result |
@@ -304,6 +419,12 @@ Sessions do not survive a server reboot.
 | Hermes health | `hermes doctor` | Config green, DeepSeek reachable, Docker running | ✓ |
 | Sandbox | `hermes chat -q "Run uname -n and whoami in your terminal and tell me the output."` | Random container hostname (not `vmi3726974`), root inside the container | ✓ (26 s) |
 | Proxy after reboot | `hermes egress status` | Listening yes | ✓ |
+| DeepSeek from Python | `python test_deepseek.py` (in `~/GTMTool`, venv on) | Answer + token count | ✓ |
+| Backup restore | Decrypt and extract on the laptop | 4 key files present, crontab line intact | ✓ |
+| Cron safety | `tail -n 4 ~/.hermes/config.yaml`, `hermes doctor` | `cron_mode: deny`, config green | ✓ |
+| Teammate access | `ssh hunter@<SERVER_IP>` from Abel's laptop | Logged in as hunter | ✓ |
+| AI layer | `PYTHONPATH=. python tests/manual_check_ai.py` (laptop) | `DeepSeekProvider`, `{'is_gaming': True, 'language': 'ru', ...}`, about 290 tokens | ✓ |
+| Unknown provider | `AI_PROVIDER=inconnu PYTHONPATH=. python tests/manual_check_ai.py` | `ValueError: Unknown AI_PROVIDER: 'inconnu'` | ✓ |
 
 ## 6. Adding a team member's SSH key
 
@@ -343,14 +464,22 @@ After a reinstall, SSH warns `REMOTE HOST IDENTIFICATION HAS CHANGED`. Clear the
 | `proxy.enabled is true but iron-proxy is not configured` | Egress firewall enabled in the wizard, proxy never set up | `hermes egress setup` then `hermes egress start` |
 | Sandbox start timeout | 1.2 GB image pulled on first use | `docker pull nousresearch/hermes-sandbox:desktop` |
 | Proxy down after reboot | No autostart in `hermes egress` | `@reboot` line in hunter's crontab |
+| `ModuleNotFoundError: dotenv` | Script run from `~` without the venv | `cd ~/GTMTool && source .venv/bin/activate` |
+| `scp`/`ssh` alias not found | Command typed on the server | Run laptop commands in a laptop terminal (`aichath@`) |
+| Snapshot refused | Plan allows one snapshot | Delete the old snapshot, then create the new one |
 
 ## 9. Next steps
 
-- [x] Python and project virtual environment
-- [x] Hermes Agent, Docker sandbox locked, iron-proxy with autostart
-- [x] AI connection (DeepSeek) and sandbox test
-- [ ] Repository skeleton: folders, `.gitignore`, `requirements.txt`, `.env.example`
-- [ ] Secrets sharing decision (Bitwarden Families or free option)
+- [x] Python environment, Hermes, Docker sandbox, iron-proxy with autostart
+- [x] DeepSeek from Hermes and from Python
+- [x] Repository skeleton on GitHub
+- [x] Encrypted backup with a restore test (manual for now)
+- [x] Dangerous commands denied in scheduled runs
+- [x] Abel's SSH key
+- [ ] SSH key of the third intern
+- [ ] Read-only deploy key on GitHub, then clone the repo into `~/GTMTool` (move `.env`, recreate `.venv`)
 - [ ] Telegram: Future Studio account (company phone number), bot, access limited to Henry, gateway as a service, reboot test
-- [ ] SSH keys of Interns 2 and 3
-- [ ] Weekly routine: `hermes update --backup`, then `hermes doctor`
+- [ ] Decisions from Henry: DeepSeek instead of OpenRouter/Kimi, secrets sharing, off-site backup storage
+- [x] AI layer and central settings (pull requests `intern1/ai-layer` and `intern1/config`, waiting for review)
+- [ ] `requirements.txt` (for now: `openai`, `python-dotenv`)
+- [ ] Weekly routine (Sunday): `hermes update --backup`, `hermes doctor`, backup + off-site copy, snapshot
