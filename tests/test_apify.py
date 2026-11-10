@@ -16,9 +16,13 @@ class FakeApifyClient:
 
     actor_id: ClassVar[str | None] = None
     dataset_id: ClassVar[str | None] = None
+    kv_store_id: ClassVar[str | None] = None
+    kv_key: ClassVar[str | None] = None
     call_options: ClassVar[dict | None] = None
     run: ClassVar = None
     items: ClassVar[list[dict]] = []
+    output: ClassVar = None
+    output_error: ClassVar[Exception | None] = None
     error: ClassVar[Exception | None] = None
 
     def __init__(self, token):
@@ -38,6 +42,17 @@ class FakeApifyClient:
         FakeApifyClient.dataset_id = dataset_id
         return SimpleNamespace(iterate_items=lambda: iter(FakeApifyClient.items))
 
+    def key_value_store(self, store_id):
+        FakeApifyClient.kv_store_id = store_id
+
+        def get_record(key):
+            FakeApifyClient.kv_key = key
+            if self.output_error is not None:
+                raise self.output_error
+            return {"key": key, "value": self.output}
+
+        return SimpleNamespace(get_record=get_record)
+
 
 @pytest.fixture(autouse=True)
 def fake_client(monkeypatch):
@@ -48,11 +63,16 @@ def fake_client(monkeypatch):
         status="SUCCEEDED",
         status_message=None,
         default_dataset_id="dataset-1",
+        default_key_value_store_id="kv-1",
     )
     FakeApifyClient.items = [{"handle": "@red", "followers": 42_000}]
+    FakeApifyClient.output = {"resumeCursor": "cursor-1"}
+    FakeApifyClient.output_error = None
     FakeApifyClient.error = None
     FakeApifyClient.actor_id = None
     FakeApifyClient.dataset_id = None
+    FakeApifyClient.kv_store_id = None
+    FakeApifyClient.kv_key = None
     FakeApifyClient.call_options = None
 
 
@@ -78,6 +98,42 @@ def test_max_items_is_omitted_when_not_given():
     apify.run_actor("apify/google-search-scraper", {"queries": "gaming"})
 
     assert "max_items" not in FakeApifyClient.call_options
+
+
+def test_run_result_exposes_storage_and_reads_output():
+    result = apify.run_actor_result(
+        "apify/google-search-scraper",
+        {"queries": "gaming"},
+        read_output=True,
+    )
+
+    assert isinstance(result, apify.ActorRunResult)
+    assert result.run_id == "run-1"
+    assert result.dataset_id == "dataset-1"
+    assert result.key_value_store_id == "kv-1"
+    assert result.items == [{"handle": "@red", "followers": 42_000}]
+    assert result.output == {"resumeCursor": "cursor-1"}
+    assert FakeApifyClient.kv_store_id == "kv-1"
+    assert FakeApifyClient.kv_key == "OUTPUT"
+
+
+def test_output_is_not_read_unless_requested():
+    apify.run_actor_result("apify/google-search-scraper", {"queries": "gaming"})
+
+    assert FakeApifyClient.kv_store_id is None
+
+
+def test_unreadable_output_keeps_the_rows():
+    FakeApifyClient.output_error = RuntimeError("storage unavailable")
+
+    result = apify.run_actor_result(
+        "apify/google-search-scraper",
+        {"queries": "gaming"},
+        read_output=True,
+    )
+
+    assert result.items == [{"handle": "@red", "followers": 42_000}]
+    assert result.output is None
 
 
 def test_a_failed_run_is_reported_with_its_status():

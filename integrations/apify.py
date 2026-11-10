@@ -9,6 +9,7 @@ already retries the API calls by itself, so this module never starts a second
 run on its own; a failure is reported for the workflow to decide.
 """
 import logging
+from dataclasses import dataclass
 from datetime import timedelta
 
 from apify_client import ApifyClient
@@ -29,6 +30,22 @@ class ApifyNotConfigured(ApifyError):
     """No API token: the settings were not filled in."""
 
 
+@dataclass(frozen=True)
+class ActorRunResult:
+    """What a successful run leaves behind: rows plus the handles to continue.
+
+    ``output`` is the Actor's OUTPUT record when it was requested. Some Actors
+    (for example a resumable crawl) put a ``resumeCursor`` there instead of in
+    the dataset rows.
+    """
+
+    run_id: str
+    dataset_id: str
+    key_value_store_id: str | None
+    items: list[dict]
+    output: object | None = None
+
+
 def is_configured() -> bool:
     """True when an Apify API token is set."""
     return bool(settings.APIFY_API_KEY)
@@ -43,10 +60,36 @@ def run_actor(
 ) -> list[dict]:
     """Run one Actor and return every row of its dataset.
 
+    Thin wrapper around ``run_actor_result`` for Actors whose only output is
+    the dataset. Use ``run_actor_result`` when the run id, the storage handles
+    or the OUTPUT record are also needed.
+    """
+    return run_actor_result(
+        actor_id,
+        run_input,
+        max_items=max_items,
+        wait_seconds=wait_seconds,
+    ).items
+
+
+def run_actor_result(
+    actor_id: str,
+    run_input: dict,
+    *,
+    max_items: int | None = None,
+    wait_seconds: int = DEFAULT_WAIT_SECONDS,
+    read_output: bool = False,
+) -> ActorRunResult:
+    """Run one Actor and return its dataset rows and storage identifiers.
+
     ``actor_id`` is either the Actor's name (``apify/google-search-scraper``) or
     its ID. ``run_input`` is the Actor's own input object; it is passed through
     unchanged. ``max_items`` stops the run early once that many rows exist,
     which also caps the bill for pay-per-result Actors.
+
+    ``read_output=True`` also reads the run's OUTPUT record. The run is already
+    paid for at that point, so a failure to read OUTPUT is logged and leaves
+    ``output`` empty instead of discarding the collected rows.
 
     Raises ``ApifyError`` when the run does not end in ``SUCCEEDED``, including
     the case where it is still running after ``wait_seconds``: use the run's
@@ -104,7 +147,30 @@ def run_actor(
         ) from error
 
     log.info("Apify actor %s returned %s row(s)", actor_id, len(items))
-    return items
+    key_value_store_id = getattr(run, "default_key_value_store_id", None)
+    output = _read_output(client, key_value_store_id) if read_output else None
+    return ActorRunResult(
+        run_id=run.id,
+        dataset_id=dataset_id,
+        key_value_store_id=key_value_store_id,
+        items=items,
+        output=output,
+    )
+
+
+def _read_output(
+    client: ApifyClient, key_value_store_id: str | None
+) -> object | None:
+    """Read the run's OUTPUT record, or return None without losing the rows."""
+    if not key_value_store_id:
+        return None
+    try:
+        record = client.key_value_store(key_value_store_id).get_record("OUTPUT")
+    except Exception as error:  # noqa: BLE001 - keep the paid rows on any failure
+        # The dataset is already paid for; an unreadable OUTPUT must not discard it.
+        log.warning("Apify OUTPUT could not be read (%s)", type(error).__name__)
+        return None
+    return record.get("value") if record else None
 
 
 def _failure_message(actor_id: str, run, wait_seconds: int) -> str:
