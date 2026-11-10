@@ -6,6 +6,7 @@ import pytest
 from integrations import telegram_directory
 from workflows import creator_hunt
 from workflows import search as workflow_search
+from workflows.query_pool import Query
 
 
 def _page(url, title="Profile"):
@@ -125,6 +126,25 @@ def test_platform_mapping_does_not_match_look_alike_domains():
     assert creator_hunt.platform_for("https://vk.com.evil.example/red") is None
     assert creator_hunt.platform_for("https://m.vk.com/red") == "VK Video"
     assert creator_hunt.platform_for("https://rutube.ru/channel/1") == "Rutube"
+
+
+def test_hunt_plan_keeps_the_pool_id_on_each_page(exa_calls):
+    _, answers = exa_calls
+    query = Query(
+        id="creator.twitch.cs2",
+        block="creators.models",
+        text="русскоязычный стример по CS2",
+        include_domains=("twitch.tv",),
+        exclude_text=("казино",),
+    )
+    answers[query.text] = [_page("https://www.twitch.tv/red")]
+
+    result = creator_hunt.hunt_plan([query])
+
+    assert result["queries"] == ["creator.twitch.cs2"]
+    assert result["pages"][0]["query_used"] == "creator.twitch.cs2"
+    assert result["pages"][0]["platform"] == "Twitch"
+    assert result["profiles"] == []
 
 
 def test_hunt_telegram_returns_candidates_the_cursor_and_the_cost(monkeypatch):

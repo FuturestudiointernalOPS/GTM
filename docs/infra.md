@@ -516,6 +516,10 @@ extraction contract (§12). Without an Actor, the hunt still returns discovery
 pages, so Exa works alone. A hunt collects and annotates only: it does not score,
 verify or write to Baserow, because a search result is not a proof (H-04).
 
+The rotating query pool (creator and buyer blocks, Exa conversion, weekly plan
+and `query_used` tracking) is documented in `docs/query-pool.md` and built by
+`workflows/query_pool.py`; each hunt exposes `hunt_plan` to run it.
+
 ### Telegram directories (tgstat + telegramic)
 
 Dedicated wrapper around the paid directory Actor

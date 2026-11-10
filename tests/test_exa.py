@@ -99,6 +99,15 @@ def test_text_is_requested_only_when_asked():
     assert FakeExa.calls[0]["contents"] == {"text": {"max_characters": 500}}
 
 
+def test_text_filters_replace_unsupported_operators():
+    FakeExa.answers = [[_result()]]
+
+    exa.search("gaming studio", include_text=("erid",), exclude_text=("казино",))
+
+    assert FakeExa.calls[0]["include_text"] == ["erid"]
+    assert FakeExa.calls[0]["exclude_text"] == ["казино"]
+
+
 def test_empty_query_is_refused_before_the_network():
     with pytest.raises(ValueError, match="must not be empty"):
         exa.search("   ")

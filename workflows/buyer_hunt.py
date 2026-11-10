@@ -9,7 +9,8 @@ adds that query explicitly once the check exists.
 import logging
 from collections.abc import Sequence
 
-from workflows.search import clean_queries, discover, extract
+from workflows.query_pool import Query
+from workflows.search import clean_queries, discover, discover_specs, extract
 
 log = logging.getLogger(__name__)
 
@@ -67,3 +68,40 @@ def hunt(
         wait_seconds=wait_seconds,
     )
     return {"queries": list(selected), "pages": pages, "profiles": profiles}
+
+
+def hunt_plan(
+    plan: Sequence[Query],
+    *,
+    num_results: int = 10,
+    with_text: bool = False,
+    start_published_date: str | None = None,
+    actor_id: str | None = None,
+    actor_input: dict | None = None,
+    max_items: int | None = None,
+    wait_seconds: int | None = None,
+) -> dict:
+    """Run a planned list of buyer queries and return attributed pages.
+
+    Each page keeps ``query`` (the Exa text) and ``query_used`` (the stable pool
+    id). Use ``query_pool.buyer_plan`` to build the list; betting queries stay
+    out unless the caller explicitly added them after a licence check.
+    """
+    specs = [query.as_search_spec() for query in plan]
+    found = discover_specs(
+        specs,
+        num_results=num_results,
+        start_published_date=start_published_date,
+        with_text=with_text,
+    )
+    profiles = extract(
+        actor_id,
+        actor_input,
+        max_items=max_items,
+        wait_seconds=wait_seconds,
+    )
+    return {
+        "queries": [query.id for query in plan],
+        "pages": found,
+        "profiles": profiles,
+    }

@@ -57,6 +57,8 @@ def search(
     num_results: int = DEFAULT_RESULTS,
     include_domains: Sequence[str] | None = None,
     exclude_domains: Sequence[str] | None = None,
+    include_text: Sequence[str] | None = None,
+    exclude_text: Sequence[str] | None = None,
     start_published_date: str | None = None,
     category: str | None = None,
     with_text: bool = False,
@@ -67,7 +69,8 @@ def search(
     Only the options that are actually set are sent, so Exa keeps its own
     defaults for everything else. ``start_published_date`` uses the ISO form
     ``YYYY-MM-DD``. ``category`` is Exa's category, for example ``company`` or
-    ``people``.
+    ``people``. ``include_text`` and ``exclude_text`` restrict the page text;
+    they replace the ``+`` and ``-`` operators that Exa does not support.
 
     Each row always has the same keys: ``url``, ``title``, ``published_date``,
     ``author`` and ``text`` (``None`` unless ``with_text`` is true). Missing
@@ -89,6 +92,10 @@ def search(
         options["include_domains"] = list(include_domains)
     if exclude_domains:
         options["exclude_domains"] = list(exclude_domains)
+    if include_text:
+        options["include_text"] = list(include_text)
+    if exclude_text:
+        options["exclude_text"] = list(exclude_text)
     if start_published_date:
         options["start_published_date"] = start_published_date
     if category:

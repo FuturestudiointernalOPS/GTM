@@ -11,7 +11,8 @@ from collections.abc import Sequence
 from urllib.parse import urlsplit
 
 from integrations import telegram_directory
-from workflows.search import clean_queries, discover, extract
+from workflows.query_pool import Query
+from workflows.search import clean_queries, discover, discover_specs, extract
 
 log = logging.getLogger(__name__)
 
@@ -95,14 +96,7 @@ def hunt(
         with_text=with_text,
     )
 
-    pages: list[dict] = []
-    for page in found:
-        platform = platform_for(page["url"])
-        if platform is None:
-            log.warning("Creator search returned an out-of-scope page: %s", page["url"])
-            continue
-        pages.append({**page, "platform": platform})
-
+    pages = _annotate_platforms(found)
     profiles = extract(
         actor_id,
         actor_input,
@@ -110,6 +104,57 @@ def hunt(
         wait_seconds=wait_seconds,
     )
     return {"queries": list(selected), "pages": pages, "profiles": profiles}
+
+
+def hunt_plan(
+    plan: Sequence[Query],
+    *,
+    num_results: int = 10,
+    with_text: bool = False,
+    start_published_date: str | None = None,
+    actor_id: str | None = None,
+    actor_input: dict | None = None,
+    max_items: int | None = None,
+    wait_seconds: int | None = None,
+) -> dict:
+    """Run a planned list of pool queries and return attributed pages.
+
+    Each page keeps ``query`` (the Exa text) and ``query_used`` (the stable pool
+    id), which is the column the tracker stores. Use ``query_pool.creator_plan``
+    to build the list; a combined plan also works, but buyer-only pages are not
+    creator-platform pages and are dropped.
+    """
+    specs = [query.as_search_spec() for query in plan]
+    found = discover_specs(
+        specs,
+        num_results=num_results,
+        start_published_date=start_published_date,
+        with_text=with_text,
+    )
+    pages = _annotate_platforms(found)
+    profiles = extract(
+        actor_id,
+        actor_input,
+        max_items=max_items,
+        wait_seconds=wait_seconds,
+    )
+    return {
+        "queries": [query.id for query in plan],
+        "pages": pages,
+        "profiles": profiles,
+    }
+
+
+def _annotate_platforms(found: Sequence[dict]) -> list[dict]:
+    """Keep only pages on a scope platform and label each one."""
+    pages: list[dict] = []
+    for page in found:
+        platform = platform_for(page["url"])
+        if platform is None:
+            log.warning("Creator search returned an out-of-scope page: %s", page["url"])
+            continue
+        pages.append({**page, "platform": platform})
+    return pages
 
 
 def hunt_telegram(

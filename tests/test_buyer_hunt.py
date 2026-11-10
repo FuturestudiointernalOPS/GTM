@@ -3,6 +3,7 @@ import pytest
 
 from workflows import buyer_hunt
 from workflows import search as workflow_search
+from workflows.query_pool import Query
 
 
 def _page(url, title="Company"):
@@ -44,6 +45,7 @@ def test_hunt_uses_the_defaults_and_excludes_social_platforms(exa_calls):
             "author": None,
             "text": None,
             "query": buyer_hunt.DEFAULT_QUERIES[0],
+            "query_used": buyer_hunt.DEFAULT_QUERIES[0],
         }
     ]
     assert calls[0]["include_domains"] is None
@@ -99,3 +101,19 @@ def test_betting_is_not_searched_by_default():
     joined = " ".join(buyer_hunt.DEFAULT_QUERIES).lower()
     assert "казино" not in joined
     assert "ставки" not in joined
+
+
+def test_hunt_plan_keeps_the_pool_id_on_each_page(exa_calls):
+    _, answers = exa_calls
+    query = Query(
+        id="buyer.ads.esports",
+        block="buyers.ads",
+        text="реклама erid киберспорт",
+    )
+    answers[query.text] = [_page("https://brand.example")]
+
+    result = buyer_hunt.hunt_plan([query])
+
+    assert result["queries"] == ["buyer.ads.esports"]
+    assert result["pages"][0]["query_used"] == "buyer.ads.esports"
+    assert result["profiles"] == []
