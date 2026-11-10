@@ -10,6 +10,7 @@ import logging
 from collections.abc import Sequence
 from urllib.parse import urlsplit
 
+from integrations import telegram_directory
 from workflows.search import clean_queries, discover, extract
 
 log = logging.getLogger(__name__)
@@ -26,6 +27,15 @@ ALLOWED_DOMAINS = (
     "youtu.be",
 )
 EXCLUDED_DOMAINS = ("instagram.com", "facebook.com")
+
+# The directory Actor labels gaming as "games"; esport listings sit under
+# "sport" or "games" depending on the directory.
+TELEGRAM_GAMING_CATEGORIES = ("games", "sport")
+
+# tgstat has no Russia-only ranking. Global plus the Russian-speaking CIS
+# rankings is the closest equivalent; the row keeps the country it came from.
+TELEGRAM_REGIONS = ("global", "by", "kz", "uz", "kg")
+TELEGRAM_RANKINGS = ("members",)
 
 # Russian and English queries: creators describe themselves in both. They are
 # starting points for the operator, not a fixed list from the scope.
@@ -100,6 +110,50 @@ def hunt(
         wait_seconds=wait_seconds,
     )
     return {"queries": list(selected), "pages": pages, "profiles": profiles}
+
+
+def hunt_telegram(
+    *,
+    sources: Sequence[str] | None = None,
+    group_types: Sequence[str] | None = None,
+    categories: Sequence[str] = TELEGRAM_GAMING_CATEGORIES,
+    regions: Sequence[str] = TELEGRAM_REGIONS,
+    rankings: Sequence[str] = TELEGRAM_RANKINGS,
+    max_items: int = 100,
+    resume_cursor: str | None = None,
+    wait_seconds: int | None = None,
+) -> dict:
+    """Run the paid Telegram directory Actor and return creator leads.
+
+    ``max_items=100`` caps the run at about $0.16 at $1.60 per 1,000 records.
+    The Actor has no Russia-only ranking, so global plus the Russian-speaking
+    CIS rankings is the closest available filter. Telegram listings stay
+    subject to the calendar constraint of scope §5.2. The 5,000-300,000
+    follower range is not applied here: the score stage rejects out-of-range
+    records (E-C-04), and the raw row keeps the directory's latest count.
+
+    Returns ``profiles`` (raw Actor rows), ``candidates`` (creator fields with
+    ``directory_facts``), the ``resume_cursor`` for a continued crawl, the
+    ``run_id`` and the estimated cost ceiling.
+    """
+    result = telegram_directory.scrape(
+        sources=sources,
+        group_types=group_types,
+        categories=categories,
+        regions=regions,
+        rankings=rankings,
+        max_items=max_items,
+        resume_cursor=resume_cursor,
+        wait_seconds=wait_seconds,
+    )
+    return {
+        "profiles": result.raw_items,
+        "candidates": result.candidates,
+        "resume_cursor": result.resume_cursor,
+        "run_id": result.run_id,
+        "collected_at": result.collected_at,
+        "estimated_max_cost_usd": str(result.estimated_max_cost_usd),
+    }
 
 
 def _on(host: str, domain: str) -> bool:

@@ -454,7 +454,8 @@ Goal: the pipeline can find a page and read it. Two services, two jobs, never th
 | **Apify** | Run an Actor that extracts structured rows from public pages (search results, VK, Telegram, Twitch). | console.apify.com → Account → Integrations → `APIFY_API_KEY` |
 
 Code: `integrations/exa.py` and `integrations/apify.py`. Tests: `tests/test_exa.py`,
-`tests/test_apify.py`, `tests/test_creator_hunt.py`, `tests/test_buyer_hunt.py`
+`tests/test_apify.py`, `tests/test_telegram_directory.py`,
+`tests/test_creator_hunt.py`, `tests/test_buyer_hunt.py`
 (no network, the SDK is replaced by a fake).
 
 Usage:
@@ -515,6 +516,38 @@ extraction contract (§12). Without an Actor, the hunt still returns discovery
 pages, so Exa works alone. A hunt collects and annotates only: it does not score,
 verify or write to Baserow, because a search result is not a proof (H-04).
 
+### Telegram directories (tgstat + telegramic)
+
+Dedicated wrapper around the paid directory Actor
+`jungle_synthesizer/tgstat-telegramic-group-directory-scraper`.
+
+| Item | Value |
+|---|---|
+| Price | **$1.60 / 1,000 records**, paid per event |
+| Cost ceiling | `max_items × $0.0016`, logged and returned with every run |
+| Account needed | Apify token only; no tgstat or telegramic account |
+| Code | `integrations/telegram_directory.py`, `workflows/creator_hunt.py` (`hunt_telegram`) |
+| Tests | `tests/test_telegram_directory.py` (Actor mocked, no paid run) |
+
+```python
+from workflows.creator_hunt import hunt_telegram
+
+result = hunt_telegram(max_items=100)  # about $0.16 at most
+result["candidates"]    # creator fields + directory_facts (growth, reach, rating)
+result["profiles"]      # raw Actor rows, unchanged
+result["resume_cursor"] # pass back to continue without paying twice
+```
+
+Rules the wrapper enforces:
+
+- `max_items` is always sent and caps the bill; the estimated ceiling is logged before the run and returned after it;
+- an unknown source, group type, category, region or ranking is refused **before** the run, because a typo would otherwise start a paid run with no useful rows;
+- tgstat has no Russia-only ranking: `global` plus Belarus, Kazakhstan, Uzbekistan and Kyrgyzstan is used, and each row keeps the `country` it was ranked in;
+- `games` and `sport` cover the gaming/esport labels of both directories;
+- a private tgstat listing keeps `handle` and `platform_url` empty instead of inventing them;
+- `resume_cursor` continues a crawl without paying again for delivered rows; it expires with the account's run-retention window (free tier: about 10 runs);
+- Telegram creators stay subject to the calendar constraint of scope §5.2 (campaigns before 2027 only).
+
 ## 5. Verification tests
 
 | Test | Command (from the laptop) | Expected | Result |
@@ -540,6 +573,7 @@ verify or write to Baserow, because a search result is not a proof (H-04).
 | Telegram unconfigured | `python -m tests.manual_check_telegram` with an empty `.env` | clear message naming the two settings, exit 1 | ✓ |
 | Telegram real send | `python -m tests.manual_check_telegram` with the real token | `Sent, message id: N` | pending, needs the bot token |
 | Search layer (offline) | `python -m pytest -q` | Exa, Apify and both hunt paths pass, no network | ✓ |
+| Telegram directory (offline) | `python -m pytest -q` | paid Actor mocked; input, cost ceiling, cursor and normalization tested | ✓ |
 | Exa real search | `python -c "from integrations import exa; print(exa.search('gaming studio Russia', num_results=3))"` with `EXA_API_KEY` | 3 rows with `url` and `title` | pending, needs the Exa key |
 | Apify real run | same pattern with `apify.run_actor(...)` on a cheap Actor | rows from the dataset | pending, needs the Apify token |
 

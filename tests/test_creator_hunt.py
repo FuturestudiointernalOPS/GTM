@@ -1,6 +1,9 @@
 """Tests for the creator hunt. No network: Exa and Apify are replaced."""
+from decimal import Decimal
+
 import pytest
 
+from integrations import telegram_directory
 from workflows import creator_hunt
 from workflows import search as workflow_search
 
@@ -122,3 +125,42 @@ def test_platform_mapping_does_not_match_look_alike_domains():
     assert creator_hunt.platform_for("https://vk.com.evil.example/red") is None
     assert creator_hunt.platform_for("https://m.vk.com/red") == "VK Video"
     assert creator_hunt.platform_for("https://rutube.ru/channel/1") == "Rutube"
+
+
+def test_hunt_telegram_returns_candidates_the_cursor_and_the_cost(monkeypatch):
+    fake = telegram_directory.TelegramDirectoryResult(
+        raw_items=[{"telegram_handle": "red"}],
+        candidates=[{"handle": "red"}],
+        resume_cursor="next-page",
+        run_id="run-1",
+        collected_at="2026-11-10T12:00:00+00:00",
+        estimated_max_cost_usd=Decimal("0.0800"),
+    )
+    seen = {}
+
+    def fake_scrape(**kwargs):
+        seen.update(kwargs)
+        return fake
+
+    monkeypatch.setattr(telegram_directory, "scrape", fake_scrape)
+
+    result = creator_hunt.hunt_telegram(max_items=50, resume_cursor="previous-page")
+
+    assert result == {
+        "profiles": [{"telegram_handle": "red"}],
+        "candidates": [{"handle": "red"}],
+        "resume_cursor": "next-page",
+        "run_id": "run-1",
+        "collected_at": "2026-11-10T12:00:00+00:00",
+        "estimated_max_cost_usd": "0.0800",
+    }
+    assert seen == {
+        "sources": None,
+        "group_types": None,
+        "categories": creator_hunt.TELEGRAM_GAMING_CATEGORIES,
+        "regions": creator_hunt.TELEGRAM_REGIONS,
+        "rankings": creator_hunt.TELEGRAM_RANKINGS,
+        "max_items": 50,
+        "resume_cursor": "previous-page",
+        "wait_seconds": None,
+    }
