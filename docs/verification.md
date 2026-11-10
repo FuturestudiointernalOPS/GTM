@@ -1,86 +1,98 @@
 # Procédures de vérification réglementaire
 
-Version 1.0 · 10 novembre 2026
+Version 1.1 · 10 novembre 2026
 
-Périmètre : **Russie en référence principale**, puis extension aux pays de la CEI.
-Complète `docs/scope.md`, qui définit les critères ; ce document définit **comment
-on prouve** qu'un critère réglementaire est rempli.
+Périmètre : **Russie en référence principale**, puis pays de la CEI couverts par
+leur propre registre. Complète `docs/scope.md`, qui dit **quoi** exiger ; ce
+document dit **comment** le prouver.
+
+Ce que la version 1.1 corrige :
+
+- le registre des créateurs est **interrogeable indépendamment** du lien publié
+  par le créateur (arrêté Roskomnadzor n° 238, recherche par nom et/ou adresse de
+  page via Gosuslugi) — la réserve « partiel au mieux » tombe ;
+- le Kazakhstan dispose d'une autorité et d'un registre officiels — l'affirmation
+  « aucune entreprise de la CEI n'est vérifiable » était fausse et est retirée ;
+- un service public n'est pas une interface automatisable : ces deux questions
+  sont désormais séparées ;
+- l'identifiant technique de page n'est **plus obligatoire** pour vérifier ;
+- la couverture des plateformes devient une **donnée versionnée**, pas du code.
 
 ---
 
-## 0. Le principe : trois couches séparées
-
-C'est la correction structurante à retenir. Un prospect intéressant n'est pas un
-prospect exploitable.
+## 0. Le principe : quatre couches séparées
 
 | Couche | Contenu | Qui décide |
 |---|---|---|
-| **1. Faits officiels** | Ce que dit la source officielle, à une date donnée, avec sa preuve | Personne : c'est recopié |
-| **2. Statut de vérification** | A-t-on pu rattacher ce fait officiel **à cette entité précise** ? | Règle déterministe |
-| **3. Éligibilité** | Ce que la combinaison des vérifications autorise | Règle déterministe, jamais un score |
+| **1. Faits officiels** | Ce que dit la source, à une date, avec sa preuve | Personne : c'est recopié |
+| **2. Résultat de la recherche** | A-t-on pu interroger le service, et qu'a-t-il répondu ? | Règle déterministe |
+| **3. Statut de vérification** | Le document trouvé correspond-il **à cette entité précise** ? | Règle déterministe |
+| **4. Éligibilité** | Ce que la combinaison des vérifications autorise | Règle déterministe, jamais un score |
 
-Le score commercial vit à part. Il ne compense jamais l'éligibilité.
+Le score commercial vit à part. Il ne compense jamais l'éligibilité, et une
+vérification réussie n'ajoute aucun point.
 
-Conséquences directes :
+### 0.1 Ne jamais confondre échec technique et absence de preuve
 
-- Un créateur peut obtenir 95/100 et rester **inéligible** si le contrôle
-  réglementaire obligatoire n'est pas confirmé.
-- Une entreprise de paris peut obtenir 90/100 et rester **exclue** tant que sa
-  licence n'est pas confirmée.
-- L'inverse est vrai aussi : une vérification réussie n'améliore **aucun** score.
-  Elle ouvre une porte, elle n'ajoute pas de points.
+Règle **V-00** — Un service indisponible, une page qui ne répond pas ou un
+formulaire qui change ne produisent **jamais** une absence d'inscription. Ils
+produisent une recherche non aboutie. L'erreur technique ne doit jamais devenir
+une accusation.
 
-### Correction importante par rapport à la proposition initiale
+### 0.2 Maturité d'un module ≠ statut d'une fiche
 
-Il ne faut pas confondre « la licence est révoquée » et « la vérification a
-échoué ». Ce sont deux informations différentes, et les fusionner détruit de la
-connaissance :
+Deux questions différentes, deux vocabulaires différents :
 
-| Situation | Statut de vérification | Éligibilité | Ce qu'on conserve |
-|---|---|---|---|
-| Licence trouvée, active, tout concorde | VERIFIED | ÉLIGIBLE | Les faits officiels |
-| Licence trouvée, **révoquée** | **VERIFIED** (on a bien identifié le titulaire) | **INÉLIGIBLE** | Le statut officiel `REVOKED` et sa date |
-| Licence introuvable dans le registre | PENDING ou NOT_FOUND | INÉLIGIBLE | Le motif : aucun document officiel |
-| Licence appartenant à une autre société | MISMATCH | INÉLIGIBLE | Les deux identités comparées |
+- **La fiche** est vérifiée, partielle, en attente, en contradiction ou non
+  concernée.
+- **Le module** est prêt, partiel, ou non validé. Un module « partiel » peut
+  produire des fiches correctes sur les cas simples, et il le dit.
 
-La couche 1 enregistre le fait (`license_status = REVOKED`), la couche 3 en tire
-la conséquence. On peut ainsi répondre plus tard à la question « pourquoi
-l'avons-nous exclu, et sur quelle base ? ».
+Un module partiel ne doit pas être présenté comme automatisable de bout en bout.
 
 ---
 
-## 1. Vocabulaire unique des statuts
+## 1. Vocabulaire des statuts
 
-La proposition initiale utilisait six statuts pour les créateurs et cinq, qui se
-recoupent, pour les licences. Un seul jeu suffit, avec des **motifs** en plus :
+### 1.1 Résultat de recherche (couche 2)
 
-| Statut | Signification | Effet sur l'éligibilité |
+| Résultat | Signification | Se traduit en |
 |---|---|---|
-| **VERIFIED** | Document officiel trouvé et rattaché à cette entité précise | Favorable |
-| **PARTIAL** | Document trouvé et rattaché à la page, mais l'identité de la personne reste à confirmer | Ne bloque pas la page, bloque la personne |
-| **PENDING** | Informations insuffisantes, source inaccessible, ou vérification en cours | Bloque (temporaire) |
-| **MISMATCH** | Le document officiel correspond à une **autre** entité | Bloque |
-| **NOT_FOUND** | Aucune inscription retrouvée | Bloque |
+| **FOUND** | La recherche a abouti et a renvoyé au moins une inscription | À comparer (couche 3) : ne vaut pas encore correspondance |
+| **NOT_FOUND** | La recherche a été **exécutée correctement**, sans résultat | Statut NOT_FOUND |
+| **SEARCH_UNAVAILABLE** | Service inaccessible, formulaire modifié, recherche impossible | Statut PENDING, motif `SEARCH_UNAVAILABLE` |
+| **MANUAL_REVIEW** | Résultat ambigu : plusieurs inscriptions, nom proche sans certitude | Statut MANUAL_REVIEW |
+
+### 1.2 Statut de vérification (couche 3)
+
+| Statut | Signification | Effet |
+|---|---|---|
+| **VERIFIED** | Le document officiel correspond à cette entité, identifiant ou URL confirmés | Favorable |
+| **PARTIAL** | Document rattaché à la page, mais identité de la personne non établie | Favorable à la page, bloquant pour la personne |
+| **PENDING** | Recherche non aboutie, source inaccessible ou non actualisée | Suspend |
+| **MISMATCH** | Le document correspond à une autre entité | Bloque |
+| **NOT_FOUND** | Recherche correcte, aucune inscription | Bloque |
 | **NOT_APPLICABLE** | L'obligation ne concerne pas cette entité | Ne bloque pas |
-| **MANUAL_REVIEW** | Éléments contradictoires, ou site non reconnu | Bloque jusqu'à décision humaine |
+| **MANUAL_REVIEW** | Éléments contradictoires | Suspend jusqu'à décision humaine |
 
-Motifs à stocker à côté du statut, qui ne changent pas le statut mais expliquent
-la décision : `SOURCE_OUTDATED`, `SOURCE_UNREACHABLE`, `BELOW_THRESHOLD`,
-`PLATFORM_NOT_COVERED`, `DOMAIN_NOT_LISTED`, `LOOKALIKE_DOMAIN`,
-`IDENTIFIER_MISSING`.
+### 1.3 Éligibilité (couche 4)
 
-Correspondance avec la proposition initiale :
-
-| Proposition | Statut retenu |
+| Valeur | Signification |
 |---|---|
-| VERIFIED | VERIFIED |
-| PARTIALLY VERIFIED | PARTIAL |
-| PENDING | PENDING |
-| MISMATCH | MISMATCH |
-| NOT FOUND | NOT_FOUND |
-| NOT APPLICABLE | NOT_APPLICABLE |
-| REJECTED (licence révoquée) | VERIFIED + éligibilité INÉLIGIBLE |
-| MANUAL REVIEW | MANUAL_REVIEW |
+| **ELIGIBLE** | Tous les contrôles applicables sont favorables |
+| **INELIGIBLE** | Au moins un contrôle applicable est défavorable (contradiction, absence, exclusion) |
+| **REGULATORY_PENDING** | Le pays ou la plateforme n'est pas encore cartographié : la qualification réglementaire est suspendue |
+| **EXCEPTION_APPROVED** | Dérogation écrite de la direction, avec responsable, justification et date. **N'est jamais VERIFIED et ne doit jamais être affiché comme tel** |
+
+Règle **V-01** — L'éligibilité ne s'exprime jamais en points, et un score ne
+l'améliore jamais.
+
+### 1.4 Motifs stockés à côté du statut
+
+`SOURCE_OUTDATED`, `SOURCE_UNREACHABLE`, `SEARCH_UNAVAILABLE`,
+`SEARCH_QUERY_AMBIGUOUS`, `BELOW_THRESHOLD`, `PLATFORM_NOT_COVERED`,
+`PLATFORM_COVERAGE_UNKNOWN`, `DOMAIN_NOT_LISTED`, `LOOKALIKE_DOMAIN`,
+`IDENTIFIER_MISSING`, `COUNTRY_NOT_MAPPED`.
 
 ---
 
@@ -88,257 +100,336 @@ Correspondance avec la proposition initiale :
 
 ### 2.1 Ce que le registre prouve, et ce qu'il ne prouve pas
 
-**Prouve** : que le propriétaire de la page a effectué la démarche officielle
-d'identification auprès de Roskomnadzor, et que cette page a été enregistrée.
+**Prouve** : que la page a été enregistrée par un propriétaire ayant effectué la
+démarche officielle, et que cette page figure au registre à une date donnée.
 
-**Ne prouve pas** : que la personne qui se présente comme le créateur est bien
-celle qui contrôle le compte, ni son identité civile. Deux questions distinctes,
-deux contrôles distincts.
+**Ne prouve pas** : que la personne qui se présente comme le créateur contrôle le
+compte, ni son identité civile.
 
-**Ne prouve pas non plus** : la qualité de l'audience, la réalité des abonnés, ni
-le droit de diffuser une campagne donnée.
+**Ne prouve pas non plus** : la qualité de l'audience, ni le droit de diffuser une
+campagne donnée.
 
-### 2.2 Seuil et applicabilité
+### 2.2 Recherche indépendante du lien publié
 
-L'obligation vise les pages et chaînes de **plus de 10 000 abonnés** sur les
-plateformes concernées. Avant de conclure quoi que ce soit, il faut donc :
+La démarche du propriétaire (déclaration, référence publiée en description ou en
+publication épinglée, lien vers la fiche) n'est **pas** le seul chemin de
+vérification. Le service permet de confirmer la présence ou l'absence d'une page
+dans le registre à partir d'une recherche par **nom et/ou adresse de la page**,
+via un formulaire public sur Gosuslugi.
 
-1. lire l'audience telle que la plateforme l'affiche, à une date donnée ;
-2. savoir si la plateforme est couverte par l'obligation ;
-3. savoir si la plateforme expose un identifiant technique stable.
+Règle **V-02** — Deux chemins, à traiter séparément :
 
-Ces deux derniers points dépendent d'une **table de couverture par plateforme**,
-qui reste à établir (§7). Tant qu'elle n'existe pas, on ne peut pas décider
-sereinement entre NOT_APPLICABLE et NOT_FOUND.
+| Chemin | Ce qu'il donne | Limite |
+|---|---|---|
+| Recherche dans le service | Présence ou absence, même si le créateur n'a rien publié | Dépend de la disponibilité du service |
+| Lien publié par le créateur | Preuve directe, si la fiche correspond | Ne prouve pas l'absence |
 
-### 2.3 Procédure
+Règle **V-03** — Un FOUND n'est pas une correspondance. La recherche peut
+renvoyer une page au nom proche, ou plusieurs pages. La comparaison (couche 3)
+reste obligatoire.
 
-Pour chaque créateur candidat :
+Règle **V-04** — Un NOT_FOUND ne vaut que si la **requête** est enregistrée :
+nom interrogé ou adresse normalisée, date, et adresse de la page de résultat. Une
+absence constatée sur une requête mal formée ne prouve rien.
+
+### 2.3 Deux conditions cumulatives
+
+Une page n'est concernée que si **les deux** conditions sont réunies :
+
+1. la plateforme figure au registre des réseaux sociaux tenu par Roskomnadzor ;
+2. la page dépasse **10 000 abonnés**.
+
+Règle **V-05** — Sans ces deux conditions établies, le statut est NOT_APPLICABLE
+ou PENDING (`PLATFORM_COVERAGE_UNKNOWN`), jamais NOT_FOUND.
+
+### 2.4 Couverture des plateformes : une donnée, pas du code
+
+Dernière liste publique confirmée par recoupement de sources rapportant les
+indications de Roskomnadzor : **19 mars 2026, 15 plateformes**. Elle doit être
+versionnée, datée et revérifiée périodiquement — jamais figée dans le programme.
+
+| Plateforme | Couverture | Identifiant technique stable |
+|---|---|---|
+| VKontakte | Oui | ID numérique du profil ou de la communauté |
+| Odnoklassniki | Oui | ID numérique du profil |
+| Telegram | Oui | ID numérique du canal via l'API ; le pseudonyme peut changer |
+| YouTube | Oui | `channelId` unique |
+| Twitch | Oui | ID utilisateur numérique via l'API |
+| Dzen | Oui | ID du canal dans le chemin `/id/...` |
+| TikTok | Oui | `open_id` via API, mais **avec autorisation de l'utilisateur** : pas une solution générale |
+| Likee | Oui | Identifiant stable public non confirmé |
+| LiveJournal | Oui | Identifiant public immuable non confirmé |
+| Pikabu | Oui | Identifiant stable exploitable non confirmé |
+| Pinterest | Oui | Identifiant interne non confirmé ; nom public modifiable |
+| Rutube | Oui | Identifiant technique à confirmer par test |
+| Yappy | Oui | Identifiant stable public non confirmé |
+| Réponses Mail.ru | Oui | Identifiant stable public non confirmé |
+| MAX | Oui | Identifiant stable public non confirmé |
+
+Règle **V-06** — La couverture se stocke par fiche (`COVERED`, `NOT_COVERED`,
+`UNKNOWN`) avec sa date de contrôle. Quand la liste change, on rejoue les fiches
+`UNKNOWN` — on ne reclasse pas les `COVERED` sans raison.
+
+Règle **V-07** — La liste est stockée hors du code, avec sa source et sa date.
+Une liste codée en dur devient fausse sans que personne ne s'en aperçoive.
+
+### 2.5 Identité technique : utile, plus obligatoire
+
+L'arrêté prévoit une recherche par nom et/ou adresse : l'identifiant technique
+n'est donc pas une condition de la vérification. Il reste le meilleur discriminant
+quand il existe.
+
+| Champ | Rôle |
+|---|---|
+| `platform_url` | **Clef obligatoire**, normalisée |
+| `platform_account_id` | Clef complémentaire, si disponible |
+| `platform_username` | Attribut **modifiable**, jamais une clef |
+| `platform_coverage_status` | COVERED / NOT_COVERED / UNKNOWN |
+| `coverage_checked_at` | Date du dernier contrôle de couverture |
+
+### 2.6 Procédure
 
 | Étape | Action | Donnée produite |
 |---|---|---|
-| 1 | Enregistrer l'identité technique : nom affiché, pseudonyme, URL exacte, identifiant technique de la page, plateforme, abonnés | `platform_url`, `platform_account_id`, `followers`, `followers_read_at` |
-| 2 | Chercher le lien du registre dans la description, les publications épinglées, les liens officiels, et noter la présence éventuelle du badge A+ | `rkn_registry_url`, `a_plus_badge` |
-| 3 | Ouvrir le lien et vérifier **le domaine** : appartient-il au service officiel ? | `registry_domain_ok` |
-| 4 | Comparer champ par champ : plateforme, nom, URL, identifiant de page | `registry_url_match`, `rkn_registry_status` |
-| 5 | Consigner la date de consultation et la preuve (URL, capture ou empreinte du contenu) | `verification_date`, `verification_evidence` |
+| 1 | Enregistrer l'identité technique : nom affiché, pseudonyme, URL exacte, identifiant si accessible, plateforme, abonnés et date de lecture | `platform_url`, `platform_account_id`, `followers`, `followers_read_at` |
+| 2 | Vérifier les deux conditions : plateforme couverte, seuil dépassé | `platform_coverage_status`, `coverage_checked_at` |
+| 3 | Chercher le lien dans la description, les publications épinglées, les liens officiels ; noter le badge A+ | `rkn_registry_url`, `a_plus_badge` |
+| 4 | Interroger le service public par nom et/ou adresse ; enregistrer la requête | `rkn_search_status`, `rkn_search_query`, `verification_date` |
+| 5 | Contrôler le domaine de la fiche : appartient-il au service officiel ? | `registry_domain_ok` |
+| 6 | Comparer : plateforme, URL, identifiant, nom normalisé | `registry_url_match`, `rkn_registry_status` |
+| 7 | Consigner la preuve : adresse consultée, date, empreinte du contenu | `verification_evidence` |
+| 8 | Si nécessaire, demander le contrôle du compte (§2.8) | `creator_control_verified` |
 
-### 2.4 Comparaisons : ce qui doit correspondre exactement
+### 2.7 Comparaisons
 
-L'identifiant technique de la page est le seul élément vraiment discriminant.
-Deux chaînes peuvent porter le même nom sans être la même chaîne.
-
-| Élément | Règle de comparaison |
+| Élément | Règle |
 |---|---|
-| Identifiant technique | **Égalité exacte**, obligatoire quand il est disponible des deux côtés |
-| URL de la page | Comparaison normalisée : protocole retiré, domaine en minuscules, `www` retiré, barre finale retirée, paramètres de suivi retirés |
+| Identifiant technique | Égalité exacte, quand disponible des deux côtés |
+| URL de la page | Normalisée : protocole retiré, domaine en minuscules, `www` et barre finale retirés, paramètres de suivi retirés |
 | Plateforme | Égalité après normalisation du nom d'usage |
-| Nom affiché | Comparaison souple (casse, espaces, emoji, translittération) — **jamais** suffisante à elle seule |
+| Nom affiché | Comparaison souple (casse, espaces, emoji, translittération) — **jamais** suffisante seule |
 
-Règle **V-01** — Une correspondance de nom identique ne vaut pas correspondance.
-Si l'identifiant ou l'URL diffèrent, le statut est MISMATCH même si le nom est
-rigoureusement identique.
+Règle **V-08** — Une correspondance de nom identique ne vaut pas correspondance.
+Une URL ou un identifiant différents donnent MISMATCH, même à nom rigoureusement
+identique.
 
-Règle **V-02** — Un lien qui imite le domaine officiel sans lui appartenir n'est
-pas un indice favorable : c'est une suspicion de fraude, et la fiche passe en
-MANUAL_REVIEW avec le motif `LOOKALIKE_DOMAIN`.
+Règle **V-09** — Un domaine qui imite le service officiel sans lui appartenir
+produit MANUAL_REVIEW (`LOOKALIKE_DOMAIN`), et non un simple échec.
 
-### 2.5 Contrôle du compte, quand il faut aller plus loin
-
-Le registre ne dit pas qui tient le compte. Pour un profil important, ou pour
-toute relation commerciale significative, un contrôle complémentaire s'impose :
+### 2.8 Contrôle du compte, quand il faut aller plus loin
 
 1. ProveItGo fournit un code aléatoire ;
-2. le créateur le publie **depuis le compte concerné** ;
-3. l'agent vérifie la présence du code et sa date ;
-4. on recoupe avec les liens croisés vers ses autres comptes officiels ou son site ;
+2. le créateur le publie depuis le compte concerné ;
+3. l'agent vérifie sa présence et sa date ;
+4. recoupement avec les liens croisés vers ses autres comptes ou son site ;
 5. si une agence le représente, on identifie l'agence et son rôle.
 
-Règle **V-03** — Ce test confirme le **contrôle du compte**, pas l'identité
-civile. La fiche distingue donc `creator_control_verified` (compte) et le fait
-que l'identité civile reste non établie.
+Règle **V-10** — Ce test confirme le contrôle du compte, pas l'identité civile.
+Un refus n'est pas une faute : le statut reste PARTIAL et la décision revient à
+l'humain.
 
-Règle **V-04** — Le contrôle est coopératif : un créateur qui refuse n'est pas
-coupable de quoi que ce soit. Son statut reste PARTIAL, et la décision
-commerciale revient à l'humain.
+### 2.9 Décisions
 
-### 2.6 Décisions
-
-| Situation | Statut | Éligibilité |
-|---|---|---|
-| Lien présent, domaine officiel, URL et identifiant identiques | VERIFIED | ÉLIGIBLE |
-| Lien présent et cohérent, mais identifiant de page indisponible | PARTIAL | ÉLIGIBLE pour la page, personne non confirmée |
-| Aucun lien, créateur sous le seuil, ou plateforme non couverte | NOT_APPLICABLE | ÉLIGIBLE |
-| Aucun lien alors que le seuil est dépassé | NOT_FOUND | **INÉLIGIBLE** (achat publicitaire interdit) |
-| Lien vers une autre page | MISMATCH | INÉLIGIBLE |
-| Registre inaccessible, page en attente de traitement | PENDING | Suspendu |
-| Domaine imitant le service officiel | MANUAL_REVIEW | Suspendu |
-
-Règle **V-05** — NOT_FOUND n'est pas une accusation. On écrit « non trouvé à
-cette date », jamais « frauduleux ». Un créateur peut être en cours de
-traitement, sous le seuil sur une autre plateforme, ou victime d'une recherche
-incomplète. La fiche reste réexaminable et ne porte aucune mention infamante.
+| Situation | Recherche | Vérification | Éligibilité |
+|---|---|---|---|
+| Inscription trouvée, URL et identifiant identiques | FOUND | VERIFIED | ÉLIGIBLE |
+| Inscription trouvée, identifiant indisponible, URL exacte | FOUND | PARTIAL | ÉLIGIBLE pour la page |
+| Recherche correcte, aucune inscription, seuil dépassé | NOT_FOUND | NOT_FOUND | INÉLIGIBLE |
+| Service indisponible ou formulaire modifié | SEARCH_UNAVAILABLE | PENDING | Suspendu, **pas** accusé |
+| Plateforme non couverte, ou couverture inconnue | — | NOT_APPLICABLE ou PENDING | ÉLIGIBLE ou suspendu |
+| Créateur sous le seuil | — | NOT_APPLICABLE | ÉLIGIBLE |
+| Inscription d'une autre page | FOUND | MISMATCH | INÉLIGIBLE |
+| Plusieurs inscriptions ambiguës | MANUAL_REVIEW | MANUAL_REVIEW | Suspendu |
 
 ---
 
 ## 3. Module B — Licence de paris
 
-### 3.1 Autorité compétente
+### 3.1 Trois pays à ne jamais confondre
 
-| Pays | Autorité | Registre à utiliser |
-|---|---|---|
-| Russie | FNS (administration fiscale fédérale) | Rubrique « Реестр лицензий » |
-| Kazakhstan | Comité de régulation des activités de jeux et des loteries, ministère du Tourisme et des Sports | Registre officiel des licences actives |
-| Autres pays de la CEI | **À identifier** avant toute automatisation (§7) | — |
+| Question | Champ |
+|---|---|
+| Où l'entreprise est-elle enregistrée ? | `country_of_incorporation` |
+| Quel pays a délivré la licence ? | `license_country` |
+| À quel marché la campagne est-elle destinée ? | `campaign_country` |
 
-Règle **V-06** — Le registre russe ne valide **jamais** une entreprise kazakhe,
-arménienne ou biélorusse. Chaque pays a son autorité, son format et sa langue.
-Une société étrangère est vérifiée uniquement dans le registre de son pays
+Règle **V-11** — Une licence kazakhe ne donne **aucun** droit pour une campagne
+destinée au marché russe. Le pays de la licence ne couvre que le marché qu'il
+autorise. Les trois valeurs sont donc stockées et confrontées explicitement.
+
+### 3.2 Autorités et registres
+
+| Pays | Autorité | Registre | Situation |
+|---|---|---|---|
+| Russie | FNS | Registre des licences | Source identifiée ; liste des domaines à actualiser |
+| Kazakhstan | Comité de régulation des activités de jeux et de loteries, ministère du Tourisme et des Sports | Registre des licences actives, publié le 28 octobre 2026 | Fichiers téléchargeables ; champ domaine à confirmer |
+| Kirghizistan | FinNadzor, ministère de l'Économie et du Commerce | Registre public des bookmakers | Fiches retrouvées datant de 2024 et 2025 : actualité à recontrôler |
+| Ouzbékistan | National Agency of Perspective Projects (NAPP) | Registre public | Nom juridique, INN, domaine, type et numéro de licence, date de délivrance — **meilleur candidat à l'automatisation** |
+| Belarus | Ministère des Impôts et Taxes (MNS) | Registre des autorisations spéciales | Autorité identifiée, accès technique à tester |
+| Arménie | Ministère de l'Économie (délivrance), State Revenue Committee (supervision) | Non confirmé | Autorité identifiée, registre public à établir |
+| Azerbaïdjan | Portail national des licences et autorisations | Recherche générale par nom, VÖEN ou numéro | Registre spécifique aux bookmakers non confirmé |
+| Moldova, Tadjikistan, Turkménistan | À cartographier | — | Pas de source suffisamment vérifiée |
+
+Règle **V-12** — Le registre d'un pays ne valide jamais une entreprise d'un autre
+pays. Une société étrangère se vérifie dans le registre de son pays
 d'enregistrement.
 
-Règle **V-07** — Une date de dernière actualisation est une donnée de première
-importance. Un jeu de données dont l'actualité affichée remonte à avril 2022
-n'est pas une preuve pour novembre 2026 : il produit un statut PENDING avec le
-motif `SOURCE_OUTDATED`, et il est signalé comme tel dans la preuve.
-
-### 3.2 Les cinq contrôles
+### 3.3 Les cinq contrôles
 
 | Contrôle | Objet | Donnée produite |
 |---|---|---|
-| 1. Existence de l'entreprise | Nom juridique exact, ИНН, ОГРН, pays, via le registre des entreprises (ЕГРЮЛ) | `legal_name`, `inn`, `ogrn`, `country` |
-| 2. Numéro de licence | Numéro exact, titulaire, activité autorisée, statut, date | `license_number`, `licensed_activity`, `license_status` |
-| 3. Domaine | Le domaine utilisé figure-t-il dans la liste officielle des sites associés aux opérateurs autorisés ? | `official_domain`, `domain_match` |
-| 4. Statut actuel | Active, suspendue, révoquée, annulée, modifiée — et cohérence avec l'activité réellement exercée | `license_status`, `license_checked_at` |
-| 5. Croisement des trois sources | Entreprise (ИНН + ОГРН + nom) ↔ licence (numéro + titulaire + statut + activité) ↔ site (domaine officiel) | `verification_evidence` |
+| 1. Existence de l'entreprise | Nom juridique, ИНН/INN, ОГРН, pays, via le registre des entreprises du pays | `legal_name`, `inn`, `ogrn`, `country_of_incorporation` |
+| 2. Numéro de licence | Numéro exact, titulaire, activité autorisée, statut, date | `license_number`, `licensed_activity`, `license_status`, `license_country` |
+| 3. Domaine | Le domaine utilisé figure-t-il dans la source officielle du pays ? | `official_domain`, `domain_match`, `domain_source_date` |
+| 4. Statut actuel | Active, suspendue, révoquée, annulée, modifiée ; cohérence avec l'activité exercée | `license_status`, `license_checked_at` |
+| 5. Croisement | Entreprise ↔ licence ↔ site | `verification_evidence` |
 
-Règle **V-08** — Une licence authentique appartenant à une **autre** entreprise
-ne vaut rien. C'est le cas d'erreur le plus coûteux : il produit une apparence
-de conformité.
+Règle **V-13** — Une licence authentique appartenant à une **autre** entreprise ne
+vaut rien. C'est l'erreur la plus coûteuse : elle produit une apparence de
+conformité.
 
-### 3.3 Comparaisons : trois pièges à éviter
+### 3.4 Fiabilité de la source « domaine »
 
-La proposition initiale comparait les chaînes caractère par caractère. En
-pratique, cela produit des faux rejets systématiques. Règles corrigées :
+| Pays | Données officielles | Niveau envisageable |
+|---|---|---|
+| Russie | PDF de la FNS associant 20 opérateurs à leurs domaines, dernière mise à jour au 5 décembre 2025 | **Partiel** : trop ancien pour certifier automatiquement en novembre 2026, contrôle humain nécessaire |
+| Ouzbékistan | Domaine inclus dans le registre des licences | **Bon candidat** à l'automatisation |
+| Kazakhstan | Registre téléchargeable, champ domaine à confirmer | À tester |
+| Belarus | Registre officiel identifié, structure à tester | Partiel |
+| Kirghizistan | Registre des bookmakers identifié, domaine à vérifier séparément | Partiel |
+
+Règle **V-14** — L'ancien jeu de données XML ouvert de la FNS (actualité au
+1er avril 2022, explicitement plus mis à jour) ne sert **jamais** de preuve
+actuelle. Il produit PENDING avec le motif `SOURCE_OUTDATED`.
+
+Règle **V-15** — La date de la source qui atteste le domaine est stockée avec le
+domaine. Un domaine « officiel » sans date n'est pas une preuve.
+
+Règle **V-16** — Seul un domaine **exactement** identique compte. Une marque
+connue, une redirection, une page qui ressemble au site de l'opérateur ou un
+domaine voisin ne suffisent jamais.
+
+### 3.5 Pièges de comparaison
+
+La proposition initiale comparait des chaînes caractère par caractère. En
+pratique, cela produit des faux rejets systématiques :
 
 | Comparaison | Mauvaise pratique | Règle retenue |
 |---|---|---|
-| Nom juridique | Égalité stricte. « ООО «БК «ПАРИ» » diffère de « ООО БК ПАРИ » à cause des guillemets, espaces et casse | **L'identité se prouve par ИНН et ОГРН**, pas par le nom. Le nom est comparé après normalisation (casse, guillemets, espaces, forme juridique) et ne sert que de contrôle croisé |
-| Activité autorisée | Recherche du mot anglais « bookmaker », absent d'une source russe | **Table de correspondance explicite** des libellés russes d'activité autorisée, tenue avec le code, pas une recherche de sous-chaîne improvisée |
-| Domaine | Égalité stricte de l'adresse saisie | Normalisation : minuscules, `www` et barre finale retirés, redirections suivies, sous-domaines traités selon une règle écrite, noms internationalisés convertis en punycode |
+| Nom juridique | Égalité stricte : « ООО «БК «ПАРИ» » diffère de « ООО БК ПАРИ » par les guillemets, les espaces, la casse | **L'identité se prouve par les identifiants fiscaux.** Le nom, normalisé, ne sert que de contrôle croisé |
+| Activité autorisée | Rechercher le mot anglais « bookmaker » dans une source russe | **Table de correspondance explicite** des libellés, tenue avec le code |
+| Domaine | Égalité stricte de l'adresse saisie | Normalisation : minuscules, `www` et barre finale retirés, redirections suivies, sous-domaines selon une règle écrite, noms internationalisés en punycode |
 
-Règle **V-09** — Un faux positif de conformité est plus grave qu'un faux
-négatif. Dans le doute, le statut est MANUAL_REVIEW, jamais VERIFIED.
+Règle **V-17** — Un faux positif de conformité est plus grave qu'un faux négatif.
+Dans le doute : MANUAL_REVIEW, jamais VERIFIED.
 
-### 3.4 Décisions
+### 3.6 Décisions
 
-| Situation | Statut | Éligibilité |
+| Situation | Vérification | Éligibilité |
 |---|---|---|
-| Licence active, ИНН et ОГРН identiques, domaine figurant dans la liste officielle | VERIFIED | ÉLIGIBLE (sous réserve du §5) |
-| Licence active, identifiants identiques, domaine absent de la liste | MANUAL_REVIEW (`DOMAIN_NOT_LISTED`) | Suspendu |
-| Licence trouvée, titulaire différent | MISMATCH | INÉLIGIBLE |
-| Licence révoquée, suspendue ou annulée | VERIFIED (le fait est établi) | **INÉLIGIBLE** |
+| Licence active, identifiants identiques, domaine listé et à jour | VERIFIED | ÉLIGIBLE |
+| Licence active, identifiants identiques, domaine absent ou source périmée | MANUAL_REVIEW | Suspendu |
+| Titulaire différent | MISMATCH | INÉLIGIBLE |
+| Licence révoquée, suspendue, annulée | VERIFIED (le fait est établi) | INÉLIGIBLE |
 | Activité autorisée incompatible | VERIFIED | INÉLIGIBLE |
-| Registre indisponible, ou source non actualisée | PENDING | Suspendu |
-| Aucun document officiel, ou document fourni par l'entreprise seulement | PENDING ou NOT_FOUND | INÉLIGIBLE |
-| Informations contradictoires entre les trois sources | MANUAL_REVIEW | Suspendu |
+| Registre indisponible ou source non actualisée | PENDING | Suspendu |
+| Document fourni par l'entreprise seulement | PENDING ou NOT_FOUND | INÉLIGIBLE |
+| Pays non cartographié | PENDING (`COUNTRY_NOT_MAPPED`) | REGULATORY_PENDING |
 
-Règle **V-10** — Un document présenté par l'entreprise elle-même (capture,
-PDF, page de son site) n'est **jamais** une preuve de licence. Il oriente la
-recherche ; il ne la remplace pas.
+Règle **V-18** — Un document présenté par l'entreprise (capture, PDF, page de son
+site) n'est jamais une preuve de licence. Il oriente la recherche, il ne la
+remplace pas.
 
 ---
 
 ## 4. Qui décide : le code, pas le modèle
 
-Le modèle peut lire, extraire, résumer et proposer une recherche. Il ne conclut
-pas. Toute conclusion repose sur une comparaison déterministe entre des faits
-officiels et l'entité analysée.
+Le modèle lit, extrait, résume et propose une recherche. Il ne conclut pas.
 
-Règle **V-11** — Sans document officiel récupéré, le statut maximal atteignable
+Règle **V-19** — Sans document officiel récupéré, le statut maximal atteignable
 est PENDING. Un texte trouvé sur internet, même convaincant, ne donne jamais
 VERIFIED.
 
-Règle **V-12** — Si un modèle propose VERIFIED sans que la comparaison
-déterministe ait eu lieu, la sortie est rejetée par la validation du format.
+Règle **V-20** — Si un modèle propose VERIFIED sans comparaison déterministe, la
+sortie est rejetée par la validation du format.
 
-Règle **V-13** — Chaque conclusion enregistre la règle appliquée et sa version,
+Règle **V-21** — Chaque conclusion enregistre la règle appliquée et sa version,
 pour être rejouable.
 
-Gabarit de décision, à adapter au format réel de chaque autorité :
-
 ```text
-si aucun document officiel            -> PENDING
-si identifiants différents            -> MISMATCH
-si nom normalisé incompatible         -> MISMATCH (contrôle croisé)
-si statut officiel != actif           -> VERIFIED + inéligible
-si activité autorisée incompatible    -> VERIFIED + inéligible
-si domaine absent de la liste         -> MANUAL_REVIEW
-si source non actualisée              -> PENDING (SOURCE_OUTDATED)
+si service de recherche indisponible   -> SEARCH_UNAVAILABLE -> PENDING
+si aucun résultat sur requête correcte -> NOT_FOUND
+si résultat ambigu                     -> MANUAL_REVIEW
+si identifiants différents             -> MISMATCH
+si nom normalisé incompatible          -> MISMATCH (contrôle croisé)
+si statut officiel != actif            -> VERIFIED + inéligible
+si activité autorisée incompatible     -> VERIFIED + inéligible
+si domaine absent ou source périmée    -> MANUAL_REVIEW
+si pays non cartographié               -> PENDING + REGULATORY_PENDING
 sinon                                  -> VERIFIED
 ```
 
 ---
 
-## 5. Ce que la vérification ne couvre pas
+## 5. Pays non cartographiés : politique
 
-| Limite | Conséquence pratique |
+| Règle | Contenu |
 |---|---|
-| Une licence confirmée n'autorise pas toute campagne | Les règles de publicité du pays, de la plateforme et de la date restent à vérifier séparément |
-| L'inscription au registre ne prouve pas l'identité civile | La personne et le compte sont deux sujets distincts |
-| Le registre ne dit rien de la qualité de l'audience | Les abonnés achetés restent un sujet d'audit, pas de vérification réglementaire |
-| NOT_FOUND n'est pas une fraude | Aucune mention infamante dans la fiche |
-| Un domaine listé n'est pas un site sans risque | Il autorise l'exploitation, il ne certifie pas les pratiques commerciales |
-| Ces procédures ne constituent pas un avis juridique | Validation juridique par pays toujours requise avant production |
+| Collecte interne | **Autorisée** : on identifie l'entreprise et on conserve ses informations |
+| Qualification réglementaire | **Suspendue** : statut REGULATORY_PENDING, jamais VERIFIED |
+| Campagne réglementée | **Aucune validation** sans vérification officielle ou validation juridique humaine |
+| Dérogation | Si la direction accepte le risque, enregistrer une dérogation avec responsable, justification et date. Statut **EXCEPTION_APPROVED**, jamais VERIFIED |
+
+Règle **V-22** — Une dérogation est une décision datée et signée, pas une case à
+cocher. Elle s'affiche distinctement partout et ne se confond jamais avec une
+vérification.
 
 ---
 
-## 6. Extension aux pays de la CEI
+## 6. Ce que la vérification ne couvre pas
 
-La Russie est la référence parce que c'est le marché du Playbook et le seul dont
-les deux registres sont identifiés. Pour les autres pays, une fiche par pays doit
-être remplie **avant** toute automatisation :
-
-| À établir, par pays | Pourquoi c'est bloquant |
+| Limite | Conséquence |
 |---|---|
-| Autorité compétente et registre officiel | Sans lui, aucune vérification n'est possible |
-| Existence d'une limite d'audience comparable | Détermine si le module A s'applique |
-| Langue et format des données | Détermine l'extraction et les règles de comparaison |
-| Accès public, fréquence de mise à jour | Détermine si VERIFIED est atteignable |
-| Liste officielle des domaines autorisés | Sans elle, le contrôle 3 est impossible |
-
-Règle **V-14** — Tant qu'un pays n'est pas couvert, ses entreprises restent en
-PENDING. Elles ne sont ni qualifiées ni exclues sur la base d'une vérification
-russe. Le superviseur décide s'il accepte de prospecter sans vérification
-(§8), mais cette décision est écrite et datée.
+| Une licence confirmée n'autorise pas toute campagne | Règles du pays, de la plateforme et de la date à vérifier séparément |
+| Le pays de la licence n'est pas le pays de la campagne | Trois valeurs distinctes, confrontées explicitement (V-11) |
+| L'inscription ne prouve pas l'identité civile | Personne et compte sont deux sujets |
+| Le registre ne dit rien de la qualité de l'audience | Les abonnés achetés relèvent de l'audit |
+| NOT_FOUND n'est pas une fraude | Aucune mention infamante |
+| Un domaine listé n'est pas un site sans risque | Il autorise l'exploitation, il ne certifie pas les pratiques |
+| Ces procédures ne sont pas un avis juridique | Validation juridique par pays toujours requise |
 
 ---
 
-## 7. Données à stocker
+## 7. Données à stocker (contrat)
 
 Les tables n'existent pas encore : la base centrale est prévue en semaine 5. Ces
-champs sont donc un **contrat**, pas un ajout à une table existante.
+champs sont un **contrat**, pas un ajout à une table existante.
 
 ### Créateurs
 
-`platform_url`, `platform_account_id`, `followers`, `followers_read_at`,
-`rkn_registry_url`, `rkn_registry_status`, `registry_domain_ok`,
-`registry_url_match`, `a_plus_badge`, `creator_control_verified`,
-`eligibility_status`, `verification_date`, `verification_evidence`.
+`platform_url`, `platform_account_id`, `platform_username`,
+`platform_coverage_status`, `coverage_checked_at`, `followers`,
+`followers_read_at`, `rkn_registry_url`, `rkn_search_status`, `rkn_search_query`,
+`rkn_registry_status`, `registry_domain_ok`, `registry_url_match`, `a_plus_badge`,
+`creator_control_verified`, `eligibility_status`, `verification_date`,
+`verification_evidence`.
 
 ### Acheteurs
 
-`legal_name`, `inn`, `ogrn`, `country`, `license_authority`, `license_number`,
-`license_status`, `licensed_activity`, `official_domain`, `domain_match`,
+`legal_name`, `inn`, `ogrn`, `country_of_incorporation`, `license_country`,
+`campaign_country`, `license_authority`, `license_number`, `license_status`,
+`licensed_activity`, `official_domain`, `domain_match`, `domain_source_date`,
 `license_registry_url`, `license_checked_at`, `eligibility_status`,
 `verification_date`, `verification_evidence`.
 
-Règle **V-15** — `verification_evidence` contient de quoi refaire le contrôle :
-l'adresse consultée, la date, et l'empreinte du contenu. Une capture sans date ne
-prouve rien.
+### Plateformes (table de référence versionnée)
 
-Une fiche de paris dont le module B n'a jamais été exécuté n'est pas
-« conforme » : elle est `NOT_APPLICABLE` seulement si l'entreprise n'est pas un
-opérateur de paris, sinon elle est PENDING.
+`platform_name`, `aliases`, `coverage_status`, `stable_id_available`,
+`id_notes`, `source`, `source_date`, `checked_at`, `version`.
+
+Règle **V-23** — `verification_evidence` contient de quoi refaire le contrôle :
+adresse consultée, requête posée, date, empreinte du contenu. Une capture sans
+date ne prouve rien.
 
 ---
 
@@ -346,80 +437,93 @@ opérateur de paris, sinon elle est PENDING.
 
 | Cas | Attendu |
 |---|---|
-| Page créateur, lien RKN correct, identifiant identique | VERIFIED |
-| Lien vers une autre chaîne | MISMATCH |
-| Page sans lien, 45 000 abonnés | NOT_FOUND → inéligible |
-| Page sans lien, 9 500 abonnés | NOT_APPLICABLE |
-| Badge A+ présent mais lien inaccessible | PENDING |
-| Lien pointant vers un domaine imitant le service officiel | MANUAL_REVIEW (`LOOKALIKE_DOMAIN`) |
-| Registre inaccessible ce jour-là | PENDING |
-| Licence active, ИНН et ОГРН identiques, domaine listé | VERIFIED |
-| Numéro de licence appartenant à une autre société | MISMATCH |
+| Inscription trouvée, URL et identifiant identiques | VERIFIED |
+| Inscription trouvée, identifiant indisponible, URL exacte | PARTIAL |
+| Inscription d'une autre page | MISMATCH |
+| Aucune inscription, 45 000 abonnés, requête correcte enregistrée | NOT_FOUND → inéligible |
+| Aucune inscription, 9 500 abonnés | NOT_APPLICABLE |
+| Plateforme non couverte par le registre | NOT_APPLICABLE |
+| Couverture de la plateforme inconnue | PENDING (`PLATFORM_COVERAGE_UNKNOWN`) |
+| Service de recherche indisponible | PENDING (`SEARCH_UNAVAILABLE`), jamais NOT_FOUND |
+| Badge A+ présent, lien inaccessible | PENDING, puis recherche indépendante |
+| Lien vers un domaine imitant le service officiel | MANUAL_REVIEW (`LOOKALIKE_DOMAIN`) |
+| Licence russe active, identifiants identiques, domaine listé | VERIFIED |
+| Licence appartenant à une autre société | MISMATCH |
 | Licence révoquée | VERIFIED + inéligible |
-| Licence active, domaine absent de la liste officielle | MANUAL_REVIEW |
+| Licence active, domaine absent de la liste | MANUAL_REVIEW |
+| Liste des domaines datée de décembre 2025, analyse en novembre 2026 | PENDING (`SOURCE_OUTDATED`) |
+| Ancien fichier XML de 2022 | Refusé (`SOURCE_OUTDATED`) |
 | Document de licence fourni par l'entreprise, absent du registre | PENDING |
-| Jeu de données dont l'actualité est ancienne | PENDING (`SOURCE_OUTDATED`) |
-| Nom juridique différent à la casse et aux guillemets près, ИНН identique | VERIFIED |
+| Nom juridique différent aux guillemets près, identifiants identiques | VERIFIED |
 | Site miroir du type `pari-bonus-exemple.ru` | MANUAL_REVIEW |
-| Entreprise kazakhe vérifiée via un registre russe | Refusé par la règle V-06 |
+| Entreprise kazakhe | Vérifiée dans le registre kazakh, jamais dans le russe |
+| Licence kazakhe, campagne destinée au marché russe | INÉLIGIBLE (V-11) |
+| Pays non cartographié | REGULATORY_PENDING |
+| Dérogation signée | EXCEPTION_APPROVED, affiché distinctement |
 
-Objectif d'acceptation : **aucune page ni entreprise n'est déclarée vérifiée
-sans preuve officielle correspondante, datée et rattachée à l'entité.**
+Objectif d'acceptation : **aucune page ni entreprise n'est déclarée vérifiée sans
+preuve officielle correspondante, datée et rattachée à l'entité** — et aucune
+absence de preuve ne produit une accusation.
 
-Jeu d'essai minimal demandé au stagiaire en charge des vérifications : 10 pages
-de créateurs et 5 entreprises de paris, avec résultats et preuves documentés.
-
----
-
-## 9. Points ouverts
-
-1. **URL et domaine exacts du service de vérification Roskomnadzor**, et
-   existence d'une recherche publique exhaustive. Si le registre n'est
-   consultable que via le lien fourni par le créateur, le contrôle repose sur une
-   pièce fournie par l'intéressé : le statut maximal raisonnable devient alors
-   PARTIAL, pas VERIFIED.
-2. **Table de couverture des plateformes** : obligation applicable, identifiant
-   technique exposé, manière de lire l'audience. À établir avant de coder le
-   module A.
-3. **Signification exacte du badge A+** et sa valeur probante. À traiter comme un
-   indice secondaire, jamais comme une preuve.
-4. **Accès automatisé aux registres** : structure des pages, limitation de débit,
-   protection anti-robot, fréquence de mise à jour. Un refus d'accès automatisé
-   doit être respecté, pas contourné.
-5. **Autorités et registres par pays de la CEI**, avec leur langue et leur format.
-6. **Politique pour les acheteurs CEI non vérifiables** : attente indéfinie, ou
-   prospection acceptée avec mention explicite du risque.
-7. **Normalisation figée** des URL, noms juridiques, domaines et libellés
-   d'activité : les règles doivent être écrites une fois et testées, pas
-   réinventées à chaque intégration.
-8. **Définition d'« audience adulte »** pour placer une marque de paris.
-9. **Conflit de rôles** entre ce document et le Playbook (voir §10).
+Jeu d'essai minimal : 10 pages de créateurs et 5 entreprises de paris, avec
+résultats et preuves documentés.
 
 ---
 
-## 10. Répartition du travail : conflit à trancher
+## 9. Maturité du module
+
+Statut d'ensemble : **PARTIEL**. Le module n'est pas déclaré vérifié.
+
+| Sous-module | Statut | Condition pour passer à « vérifié » |
+|---|---|---|
+| Recherche dans le registre RKN | Partiel | Test technique concluant du formulaire Gosuslugi |
+| Couverture des plateformes | Partiel | Matrice officielle versionnée et actualisée |
+| Automatisation de la recherche RKN | **Non validée** | API ou méthode automatisée **autorisée** et testée |
+| Licences russes | Partiel | Vérification effective dans le registre FNS actuel |
+| Domaines des opérateurs | Partiel | Source suffisamment fraîche et correspondance exacte |
+| Licences CEI | Partiel | Registre et règles validés pays par pays |
+
+---
+
+## 10. Points ouverts
+
+1. **Automatisation de la recherche RKN** : un service public n'implique pas une
+   interface automatisable. Ni API publique documentée, ni quotas ou limites de
+   fréquence publiés ne sont confirmés. Tant que ce n'est pas établi, la
+   recherche reste **assistée** : un humain lance la requête, l'outil enregistre
+   la preuve. Aucun contournement de protection ne doit être tenté.
+2. **Adresse exacte du formulaire** et forme des résultats (page, fichier,
+   réponse directe), à documenter avec sa date de consultation.
+3. **Actualité de la liste des plateformes** : la liste retenue date du
+   19 mars 2026 ; il faut une règle de revérification et un responsable.
+4. **Actualité des sources de domaines** : FNS au 5 décembre 2025, Kirghizistan
+   sur des fiches 2024-2025. Fréquence de contrôle et conduite à tenir à définir.
+5. **Structure du registre kazakh** : présence et forme du champ domaine.
+6. **Arménie et Azerbaïdjan** : registre spécifique aux bookmakers non confirmé.
+7. **Moldova, Tadjikistan, Turkménistan** : à cartographier.
+8. **Normalisation figée** des URL, noms, domaines et libellés d'activité.
+9. **Définition d'« audience adulte »** pour placer une marque de paris.
+10. **Conflit de rôles** avec le Playbook (voir §11).
+11. **Source de vérité unique** : critères ici, procédures là, Skill et base
+    doivent en découler sans diverger.
+
+---
+
+## 11. Répartition du travail : conflit à trancher
 
 La proposition reçue attribue au stagiaire 1 l'exécution des vérifications, au
 stagiaire 2 leur intégration, et au stagiaire 3 la recherche des registres et la
-collecte. Le Playbook, lui, donne au stagiaire 1 la collecte, au stagiaire 2
-l'enrichissement et au stagiaire 3 l'architecture. La version précédente du
-cadrage suit le Playbook.
+collecte. Le Playbook donne au stagiaire 1 la collecte, au stagiaire 2
+l'enrichissement, au stagiaire 3 l'architecture.
 
-Deux incohérences internes à la proposition :
+Deux incohérences internes : la vérification est confiée à la fois au 1 et au 3,
+et l'architecture n'est plus attribuée à personne.
 
-- Le stagiaire 1 se voit confier « l'exécution des vérifications », tandis que le
-  stagiaire 3 reçoit « la collecte et la vérification des données » : la même
-  responsabilité est attribuée deux fois.
-- Le stagiaire 3 devient chercheur de registres alors que l'architecture et
-  l'automatisation, son métier dans le Playbook, ne sont plus attribuées à
-  personne.
-
-Proposition, tant que le superviseur n'a pas tranché : garder les rôles du
-Playbook, et répartir ainsi.
+Proposition, tant que le superviseur n'a pas tranché :
 
 | Tâche | Responsable |
 |---|---|
-| Identifier les autorités et registres, documenter les procédures | Stagiaire 2, avec le stagiaire 3 pour la faisabilité technique |
-| Coder les modules de vérification, les rendre rejouables et testés | Stagiaire 3 |
-| Construire le jeu d'essai (10 pages, 5 opérateurs) et vérifier les cas ambigus | Stagiaire 2 |
-| Écrire les règles dans la source de vérité unique, puis dans le Skill et Baserow | Stagiaire 2 |
+| Cartographier autorités, registres, formats et actualité | Stagiaire 2, avec le stagiaire 3 pour la faisabilité |
+| Coder les modules, les rendre rejouables et testés | Stagiaire 3 |
+| Constituer le jeu d'essai et trancher les cas ambigus | Stagiaire 2 |
+| Écrire les règles dans la source de vérité, puis dans le Skill et la base | Stagiaire 2 |

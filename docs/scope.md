@@ -1,13 +1,18 @@
 # Document de cadrage — ProveItGo GTM Tool
 
-Version 1.1 · 10 novembre 2026
+Version 1.2 · 10 novembre 2026
 
 Propriétaire : superviseur, avec les trois stagiaires.
 
-La version 1.1 sépare le **score commercial** de l'**éligibilité réglementaire**.
-Les procédures de contrôle (registre Roskomnadzor, licence de paris) sont
-rédigées dans `docs/verification.md` : ce document dit **quoi** exiger, l'autre
-dit **comment** le prouver.
+La version 1.2 intègre deux corrections de recherche : le registre des créateurs
+est interrogeable indépendamment du lien publié (arrêté Roskomnadzor n° 238,
+formulaire Gosuslugi), et plusieurs pays de la CEI ont une autorité et un registre
+identifiés, Kazakhstan compris. Elle sépare le **score commercial** de
+l'**éligibilité réglementaire**, et ajoute le statut REGULATORY_PENDING pour les
+pays non encore cartographiés.
+
+Les procédures de contrôle sont rédigées dans `docs/verification.md` : ce document
+dit **quoi** exiger, l'autre dit **comment** le prouver.
 
 Les critères de ce document ont été **fixés par le donneur d'ordre**. Ils ne sont
 plus des propositions : les valeurs marquées ⟨proposé⟩ dans la version 0.1 sont
@@ -287,12 +292,14 @@ on signale une incohérence.
 ### 5.5 Champs obligatoires (creator)
 
 `main_platform`, `handle`, `platform_url`, `platform_account_id`,
+`platform_username`, `platform_coverage_status`, `coverage_checked_at`,
 `display_name`, `country`, `content_language`, `gaming_share`, `followers`,
 `followers_read_at`, `average_views`, `published_last_30_days`,
-`last_published_at`, `rkn_registry_url`, `rkn_registry_status`,
-`registry_domain_ok`, `registry_url_match`, `a_plus_badge`,
-`creator_control_verified`, `foreign_agent_label`, `ad_contact_or_rate_card`,
-`past_labeled_ads`, `platform_risk`, `eligibility_status`, `verification_date`,
+`last_published_at`, `rkn_registry_url`, `rkn_search_status`,
+`rkn_search_query`, `rkn_registry_status`, `registry_domain_ok`,
+`registry_url_match`, `a_plus_badge`, `creator_control_verified`,
+`foreign_agent_label`, `ad_contact_or_rate_card`, `past_labeled_ads`,
+`platform_risk`, `eligibility_status`, `verification_date`,
 `verification_evidence`, `contact_channel`, `source_refs`, `criteria_version`.
 
 Champs utiles mais facultatifs : `other_profiles`, `media_kit_url`, `agency`,
@@ -387,14 +394,15 @@ campagne doit viser des créateurs à audience adulte.
 ### 6.6 Champs obligatoires (buyer)
 
 `inn` ou `ogrn`, `legal_name`, `legal_form`, `registry_status`, `activity_code`,
-`country`, `region`, `website`, `sells_to_gamers_evidence`,
+`country_of_incorporation`, `region`, `website`, `sells_to_gamers_evidence`,
 `labeled_ads_last_90_days`, `ad_label_refs` (source, date, erid),
 `sanctions_checked_at`, `employee_band`, `decision_maker_role`,
 `decision_maker_email_verified`, `timing_signal`, `license_authority`,
-`license_number`, `license_status`, `licensed_activity`, `official_domain`,
-`domain_match`, `license_registry_url`, `license_checked_at`,
-`eligibility_status`, `verification_date`, `verification_evidence`,
-`contact_channel`, `source_refs`, `criteria_version`.
+`license_number`, `license_status`, `licensed_activity`, `license_country`,
+`campaign_country`, `official_domain`, `domain_match`, `domain_source_date`,
+`license_registry_url`, `license_checked_at`, `eligibility_status`,
+`verification_date`, `verification_evidence`, `contact_channel`, `source_refs`,
+`criteria_version`.
 
 Champs utiles mais facultatifs : `agency`, `revenue_band`, `competitors`,
 `language_of_site`, `betting_license_ref`.
@@ -454,8 +462,8 @@ niveau d'exigence, pas la manière de le prouver.
 |---|---|---|
 | Listes OFAC, UE, UK (entreprise et propriétaire) | Avant présélection (creator) et avant QUALIFIED (buyer) | COMPLIANCE REVIEW |
 | Étiquette d'agent étranger | Avant tout classement du créateur | REJECTED |
-| Registre Roskomnadzor, créateur de plus de 10 000 abonnés | Avant éligibilité | INELIGIBLE ; MANUAL_REVIEW si le lien est douteux |
-| Licence de paris (autorité du pays d'enregistrement) | Avant éligibilité d'une marque de paris | INELIGIBLE tant qu'elle n'est pas confirmée |
+| Registre Roskomnadzor : plateforme couverte **et** page de plus de 10 000 abonnés | Avant éligibilité | INELIGIBLE si l'absence est établie ; PENDING si le service est indisponible |
+| Licence de paris (autorité du pays d'enregistrement) | Avant éligibilité d'une marque de paris | INELIGIBLE tant qu'elle n'est pas confirmée ; REGULATORY_PENDING si le pays n'est pas cartographié |
 | Présence de l'étiquette complète et du erid sur chaque publicité utilisée | À la collecte | Source écartée, cas compté |
 | Coordonnées professionnelles uniquement | À la collecte du contact | Contact écarté |
 | Opposition au démarchage | Avant toute action | OPT_OUT |
@@ -467,8 +475,11 @@ niveau d'exigence, pas la manière de le prouver.
 2. **Statut de vérification** : a-t-on pu rattacher ce fait à cette entité ?
 3. **Éligibilité** : ce que la combinaison des contrôles autorise.
 
-L'éligibilité se prononce parmi : ÉLIGIBLE, INÉLIGIBLE, SUSPENDU (PENDING ou
-MANUAL_REVIEW). Elle ne s'exprime jamais par des points.
+L'éligibilité prend quatre valeurs : **ÉLIGIBLE**, **INÉLIGIBLE**,
+**REGULATORY_PENDING** (pays non cartographié : qualification suspendue, jamais
+vérifiée) et **EXCEPTION_APPROVED** (dérogation écrite de la direction, avec
+responsable, justification et date — jamais présentée comme une vérification).
+Elle ne s'exprime jamais par des points.
 
 Une licence révoquée ne veut pas dire « vérification échouée » : le fait est
 établi (VERIFIED), et c'est l'éligibilité qui devient négative. On garde ainsi la
@@ -477,10 +488,12 @@ mémoire de la raison de l'exclusion.
 ### 9.2 Ce que ces contrôles ne couvrent pas
 
 Une licence confirmée n'autorise pas toute campagne : les règles de publicité du
-pays, de la plateforme et de la date restent à vérifier. L'inscription au registre
-ne prouve pas l'identité civile du créateur, seulement l'enregistrement de la
-page. Et une absence d'inscription n'est pas une fraude : on écrit « non trouvé à
-cette date ».
+pays, de la plateforme et de la date restent à vérifier. Le pays d'immatriculation
+de l'entreprise, le pays de la licence et le pays visé par la campagne sont trois
+valeurs distinctes, et une licence kazakhe ne couvre pas une campagne destinée au
+marché russe. L'inscription au registre ne prouve pas l'identité civile du
+créateur, seulement l'enregistrement de la page. Et une absence d'inscription
+n'est pas une fraude : on écrit « non trouvé à cette date ».
 
 Point de vigilance déjà signalé au plan : la période de tolérance publicitaire
 jusqu'au 31 décembre 2026 et le régime applicable ensuite — notamment pour
@@ -515,8 +528,9 @@ classement.
 Règle **V-03** — Un changement de version ne reclasse pas automatiquement
 l'existant : on décide explicitement de rejouer ou non, et on documente.
 
-Version actuelle : **1.1** (critères fixés par le donneur d'ordre ; séparation
-score / éligibilité et renvoi aux procédures de vérification).
+Version actuelle : **1.2** (critères fixés par le donneur d'ordre ; séparation
+score / éligibilité, recherche indépendante dans le registre, CEI partiellement
+cartographiée, politique des pays non cartographiés).
 
 ---
 
@@ -593,16 +607,22 @@ l'automatisation s'ils ne sont pas tranchés :
    doit être validée ou remplacée. Sans elle, un score de 74 n'est pas reproductible.
 2. **Calcul de l'engagement** : fenêtre exacte, moyenne ou médiane, et source des
    vues pour chaque plateforme (VK Video, Twitch, Rutube, Telegram, YouTube).
-3. **Service de vérification du registre RKN** : URL et domaine officiels exacts,
-   et existence d'une recherche publique exhaustive. Si le registre n'est
-   consultable que via le lien fourni par le créateur, le statut maximal
-   raisonnable est PARTIAL, pas VERIFIED.
-4. **Table de couverture des plateformes** : obligation applicable, identifiant
-   technique exposé, lecture de l'audience. À établir avant de coder le module A.
-5. **Accès automatisé aux registres** (RKN, FNS) : structure des pages, débit,
-   protection anti-robot, fréquence de mise à jour.
-6. **Autorités et registres par pays de la CEI**, et politique pour un acheteur
-   non vérifiable : attente, ou prospection acceptée avec le risque écrit.
+3. **Automatisation de la recherche RKN** : le service public existe, mais ni API
+   documentée, ni quotas, ni limites de fréquence publiés. Tant que ce n'est pas
+   établi, la recherche reste assistée : un humain lance la requête, l'outil
+   enregistre la preuve. À documenter : adresse exacte du formulaire et forme des
+   résultats.
+4. **Couverture des plateformes** : la liste retenue (15 plateformes, 19 mars
+   2026) doit être versionnée, revérifiée périodiquement et confiée à un
+   responsable. À préciser aussi : comment lire l'audience de façon fiable.
+5. **Actualité des sources de domaines** : la liste russe date du 5 décembre
+   2025, les fiches kirghizes de 2024-2025. Fréquence de contrôle et conduite à
+   tenir à définir.
+6. **Structures et actualité des registres de la CEI** : autorités identifiées
+   pour le Kazakhstan, le Kirghizistan, l'Ouzbékistan, le Belarus, l'Arménie et
+   l'Azerbaïdjan ; restent les formats, le champ domaine et
+   Moldova/Tadjikistan/Turkménistan. La politique des pays non cartographiés est
+   fixée : collecte autorisée, qualification suspendue, dérogation distincte.
 7. **Normalisation figée** des URL, noms juridiques, domaines et libellés
    d'activité : écrite une fois, testée, pas réinventée à chaque intégration.
 8. **Définition d'« audience adulte »** pour placer une marque de paris : âge
