@@ -409,6 +409,69 @@ SET definition = jsonb_set(
     )
 WHERE version = '1.4';
 
+-- Les mesures de la 1.4 : l'audience se lit en part de messages, l'intégration
+-- se compte en créateurs payés, et « vend aux joueurs » se lit sur ce que
+-- l'entreprise affiche elle-même (§5.3, §6.3). Une part exige 10 éléments.
+UPDATE criteria_version
+SET definition = jsonb_set(
+        definition,
+        '{creator,criteria}',
+        (
+            SELECT jsonb_agg(
+                CASE
+                    WHEN item->>'code' = 'AUDIENCE_FIT' THEN
+                        item || jsonb_build_object(
+                            'measure', 'part de messages en russe sur les 50 derniers commentaires ou messages de chat, proportion enregistrée',
+                            'full_when', 'plus de la moitié',
+                            'min_sample', 10
+                        )
+                    WHEN item->>'code' = 'GAMING_SHARE' THEN
+                        item || jsonb_build_object('min_sample', 10)
+                    WHEN item->>'code' = 'AD_READY' THEN
+                        item || jsonb_build_object(
+                            'note', 'un élément illisible n''est pas un élément absent'
+                        )
+                    ELSE item
+                END
+                ORDER BY ordinality
+            )
+            FROM jsonb_array_elements(definition->'creator'->'criteria')
+                 WITH ORDINALITY AS criteria(item, ordinality)
+        )
+    )
+WHERE version = '1.4';
+
+UPDATE criteria_version
+SET definition = jsonb_set(
+        definition,
+        '{buyer,criteria}',
+        (
+            SELECT jsonb_agg(
+                CASE
+                    WHEN item->>'code' = 'PAYS_CREATORS' THEN
+                        item || jsonb_build_object(
+                            'measure', 'créateurs distincts payés au moins une fois sur 90 jours ; l''identifiant publicitaire de chaque publicité étiquetée sert de preuve'
+                        )
+                    WHEN item->>'code' = 'SELLS_TO_GAMERS' THEN
+                        item || jsonb_build_object(
+                            'measure', 'le gaming ou l''esport est l''activité principale que l''entreprise affiche elle-même'
+                        )
+                    ELSE item
+                END
+                ORDER BY ordinality
+            )
+            FROM jsonb_array_elements(definition->'buyer'->'criteria')
+                 WITH ORDINALITY AS criteria(item, ordinality)
+        )
+    )
+WHERE version = '1.4';
+
+UPDATE criteria_version
+SET notes = 'Version 1.4 : engagement fixé (médiane, fenêtre, source) ; seuils '
+         || 'Rutube 5 % et YouTube 10 % provisoires ; audience et acheteur alignés '
+         || 'sur le §5.3 et le §6.3 ; E-C-05 ajoutée, E-B-05 retirée.'
+WHERE version = '1.4';
+
 -- ---------------------------------------------------------------------------
 -- Plateformes — liste RKN du 19 mars 2026
 -- ---------------------------------------------------------------------------

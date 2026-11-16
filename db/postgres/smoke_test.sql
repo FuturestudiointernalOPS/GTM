@@ -383,4 +383,47 @@ BEGIN
 END;
 $$;
 
+-- Les critères 1.4 : exclusions et mesures alignées sur le cadrage.
+DO $$
+DECLARE
+    v_def jsonb;
+BEGIN
+    SELECT definition INTO v_def
+    FROM criteria_version
+    WHERE version = '1.4';
+
+    IF (v_def->'creator'->'eliminatory' ? 'E-C-05') IS NOT TRUE THEN
+        RAISE EXCEPTION '1.4 doit lister E-C-05 (aucun contenu gaming)';
+    END IF;
+    IF (v_def->'buyer'->'eliminatory' ? 'E-B-05') IS TRUE THEN
+        RAISE EXCEPTION '1.4 ne doit plus lister E-B-05';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(v_def->'creator'->'criteria') AS c
+        WHERE c->>'code' = 'AUDIENCE_FIT'
+          AND c->>'full_when' = 'plus de la moitié'
+          AND COALESCE(c->>'min_sample', '0') = '10'
+    ) THEN
+        RAISE EXCEPTION 'AUDIENCE_FIT doit se lire en part de messages, sur 10 messages au moins';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(v_def->'buyer'->'criteria') AS c
+        WHERE c->>'code' = 'SELLS_TO_GAMERS'
+          AND c->>'measure' LIKE '%activité principale%'
+    ) THEN
+        RAISE EXCEPTION 'SELLS_TO_GAMERS doit se lire sur l''activité affichée';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(v_def->'buyer'->'criteria') AS c
+        WHERE c->>'code' = 'PAYS_CREATORS'
+          AND c->>'measure' LIKE '%créateurs distincts%'
+    ) THEN
+        RAISE EXCEPTION 'PAYS_CREATORS doit se compter en créateurs payés';
+    END IF;
+END;
+$$;
+
 ROLLBACK;
