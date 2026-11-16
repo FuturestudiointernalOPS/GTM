@@ -90,7 +90,9 @@ Un élément d'échantillon décrit une publication, une vidéo ou un direct :
 Avec le profil : `followers`, `followers_read_at`, `main_platform`.
 
 Un élément sans URL, sans date ou sans valeur n'entre pas dans l'échantillon : il
-est compté comme illisible. Un élément exclu reste conservé, avec son motif.
+est compté comme illisible. Un élément exclu reste conservé, avec son motif. Un
+élément structurellement exclu peut aussi être illisible : `readable=false`
+porte l'illisibilité, `exclusion_reason` porte la cause structurelle.
 
 ---
 
@@ -115,6 +117,11 @@ Le résultat de la mesure contient :
 
 Le résultat ne contient ni le ratio ni les points : le score les calcule. Cette
 séparation permet de tester la mesure sans tester le barème.
+
+En `UNKNOWN`, le résultat conserve la fenêtre tentée, la taille de l'échantillon
+et le nombre d'illisibles pour le journal de mesure ; la fiche ne publie ces
+champs que lorsque la mesure est `MEASURED` (E1). Le champ `reason` est un
+diagnostic interne, jamais un critère.
 
 ---
 
@@ -207,6 +214,11 @@ snapshot de source.
 les bornes de fenêtre, le mode, la taille, les illisibles, la valeur, les drapeaux,
 la date de calcul et le hash de l'échantillon.
 
+Un résultat `UNKNOWN` pour une plateforme hors politique n'a pas de
+`measure_kind` : il ne produit pas de ligne `engagement_measure_run`. Les autres
+`UNKNOWN` en produisent une, avec leur fenêtre tentée, leurs compteurs et leur
+hash.
+
 `score_line` référence `engagement_measure_run` pour la ligne d'engagement. Le
 calcul des points ne relit jamais l'échantillon ; il reçoit la médiane.
 
@@ -255,6 +267,10 @@ Jalons indicatifs, alignés sur le calendrier du cadrage : E0 et E1 avant la
 semaine 5 (premiers scores) ; E2 et E3 avant P1 ; E4 et E5 avant le pilote de la
 semaine 8 ; E6 pendant le pilote ; E7 avant la clôture.
 
+État au 16 novembre 2026 : **E0 à E3 sont appliqués côté code**. La recette
+manuelle de 10 créateurs par plateforme reste à exécuter ; E4 à E7 restent à
+faire.
+
 ### E0 — Décision
 
 - appliquer le §5.3, la règle C-03, le §5.5, le §11, le §12 et le §14 du cadrage ;
@@ -273,7 +289,8 @@ semaine 8 ; E6 pendant le pilote ; E7 avant la clôture.
 ### E2 — Fonction pure de mesure
 
 - créer `processing/engagement.py` ;
-- fonctions pures, sans réseau, sans horloge : `now` est un paramètre ;
+- fonctions pures, sans réseau, sans horloge : l'instantané est porté par
+  `followers_read_at` et `read_at` ;
 - médiane exacte avec `Fraction`, sans arrondi intermédiaire ;
 - tests M1 à M10, plus un test d'échantillon vide et un test de type interdit ;
 - aucun accès à la base dans cette étape.
@@ -286,11 +303,27 @@ semaine 8 ; E6 pendant le pilote ; E7 avant la clôture.
 | VK Video | vues des vidéos longues, date | exclure clips et directs |
 | Rutube | vues des vidéos, date | exclure clips |
 | YouTube | vues des vidéos longues, date | reconnaître les formats courts |
-| Twitch | spectateurs simultanés moyens par direct, abonnés | ne pas lire les vues de rediffusion |
+| Twitch | spectateurs simultanés moyens par direct | ne pas lire les vues de rediffusion |
 
 Chaque collecteur rend des éléments bruts, pas une mesure. La mesure est calculée
 par la fonction d'E2. Pour chaque plateforme, 10 créateurs sont recomputés à la
-main ; les cas illisibles sont documentés, pas contournés.
+main ; les cas illisibles sont documentés, pas contournés. Les abonnés ne sont
+pas collectés ici : ils viennent de la fiche de profil et sont lus au même
+instantané.
+
+La traduction est faite par `integrations/engagement_collectors.py` :
+
+- une seule normalisation par plateforme, aucun identifiant d'Actor codé en dur ;
+- l'opérateur fournit l'Actor et son entrée ; le module fournit la traduction ;
+- contrat minimum d'une ligne : une URL publique, une date de publication, une
+  valeur ; sur Twitch, la valeur est la simultanéité, jamais les vues de
+  rediffusion ;
+- une ligne sans URL ou sans date est écartée et comptée ; une ligne sans valeur
+  lisible devient un élément illisible, jamais un zéro ;
+- `collect_with_apify()` rend les identifiants du run et du dataset, pour que la
+  preuve reste rattachable à la collecte ;
+- recette manuelle : 10 créateurs par plateforme, médiane recalculée à la main
+  depuis les lignes, écart consigné. Un écart bloque la plateforme.
 
 ### E4 — Score
 

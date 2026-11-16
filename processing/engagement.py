@@ -40,6 +40,13 @@ WEAK_UP_TO = 9
 _STRUCTURAL_EXCLUSIONS = frozenset({"PINNED", "PAID_AD", "CLIP", "LIVE"})
 _UNREADABLE_REASON = "UNREADABLE"
 
+_KNOWN_KINDS = frozenset(
+    {"POST", "LONG_VIDEO", "SHORT", "STREAM", "VOD", "CLIP"}
+)
+_KNOWN_EXCLUSIONS = frozenset(
+    {"PINNED", "PAID_AD", "CLIP", "LIVE", "UNREADABLE"}
+)
+
 
 @dataclass(frozen=True)
 class Policy:
@@ -101,7 +108,7 @@ class EngagementMeasure:
     window_mode: str | None
     flags: tuple[str, ...]
     read_at: str | None
-    sample_hash: str | None
+    sample_hash: str
     reason: str | None = None  # diagnostic only; never a criterion
 
 
@@ -109,60 +116,113 @@ def measure_engagement(
     items: Iterable[EngagementItem], profile: EngagementProfile
 ) -> EngagementMeasure:
     """Turn one snapshot into a median, or refuse to measure (M-07)."""
-    platform = _platform_key(profile.main_platform)
+    platform = platform_key(profile.main_platform)
     policy = POLICIES.get(platform)
     if policy is None:
-        return _unknown(measure_kind=None, reason="platform_without_policy")
+        return _unknown(
+            measure_kind=None,
+            reason="platform_without_policy",
+            read_at=_profile_read_at(profile),
+        )
 
-    sample = [item for item in items if _platform_key(item.platform) == platform]
+    sample = [item for item in items if platform_key(item.platform) == platform]
     if not sample:
-        return _unknown(measure_kind=policy.measure_kind, reason="empty_sample")
+        return _unknown(
+            measure_kind=policy.measure_kind,
+            reason="empty_sample",
+            read_at=_profile_read_at(profile),
+        )
 
-    snapshot = _snapshot(sample, profile)
+    for item in sample:
+        _validate_item(item)
+
+    relevant = [item for item in sample if _is_relevant(item, policy)]
+    if not relevant:
+        return _unknown(
+            measure_kind=policy.measure_kind,
+            reason="empty_sample",
+            read_at=_profile_read_at(profile),
+        )
+
+    snapshot = _snapshot(relevant, profile)
     if snapshot is None:
         return _unknown(
-            measure_kind=policy.measure_kind, reason="snapshot_mismatch"
+            measure_kind=policy.measure_kind,
+            reason="snapshot_mismatch",
+            read_at=_profile_read_at(profile),
         )
 
-    main = _window(sample, snapshot, policy.window_days, policy.max_items, policy)
-    if _mostly_unreadable(main):
-        return _unknown(
-            measure_kind=policy.measure_kind, reason="mostly_unreadable"
-        )
-
-    _, unreadable, readable = main
     mode = TIME
     start = snapshot - timedelta(days=policy.window_days)
+    main = _window(sample, snapshot, policy.window_days, policy.max_items, policy)
+    candidates, unreadable, readable = main
+
+    if _has_out_of_domain(candidates):
+        return _refuse_window(
+            measure_kind=policy.measure_kind,
+            reason="out_of_domain",
+            snapshot=snapshot,
+            start=start,
+            mode=mode,
+            readable=readable,
+            unreadable=unreadable,
+        )
+
+    if _mostly_unreadable(main):
+        return _refuse_window(
+            measure_kind=policy.measure_kind,
+            reason="mostly_unreadable",
+            snapshot=snapshot,
+            start=start,
+            mode=mode,
+            readable=readable,
+            unreadable=unreadable,
+        )
 
     if len(readable) < MIN_READABLE and policy.fallback_days is not None:
+        mode = FALLBACK
+        start = snapshot - timedelta(days=policy.fallback_days)
         fallback = _window(
             sample, snapshot, policy.fallback_days, FALLBACK_ITEMS, policy
         )
-        if _mostly_unreadable(fallback):
-            return _unknown(
-                measure_kind=policy.measure_kind, reason="mostly_unreadable"
+        candidates, unreadable, readable = fallback
+
+        if _has_out_of_domain(candidates):
+            return _refuse_window(
+                measure_kind=policy.measure_kind,
+                reason="out_of_domain",
+                snapshot=snapshot,
+                start=start,
+                mode=mode,
+                readable=readable,
+                unreadable=unreadable,
             )
-        _, unreadable, readable = fallback
-        mode = FALLBACK
-        start = snapshot - timedelta(days=policy.fallback_days)
+
+        if _mostly_unreadable(fallback):
+            return _refuse_window(
+                measure_kind=policy.measure_kind,
+                reason="mostly_unreadable",
+                snapshot=snapshot,
+                start=start,
+                mode=mode,
+                readable=readable,
+                unreadable=unreadable,
+            )
 
     if len(readable) < MIN_READABLE:
-        return _unknown(
-            measure_kind=policy.measure_kind, reason="sample_too_small"
+        return _refuse_window(
+            measure_kind=policy.measure_kind,
+            reason="sample_too_small",
+            snapshot=snapshot,
+            start=start,
+            mode=mode,
+            readable=readable,
+            unreadable=unreadable,
         )
 
     values = [Fraction(item.value) for item in readable]
     value = _median(values)
-
-    flags = []
-    if len(readable) <= WEAK_UP_TO:
-        flags.append(WEAK_SAMPLE)
-    if mode == FALLBACK:
-        flags.append(WINDOW_EXTENDED)
-    if unreadable:
-        flags.append(UNREADABLE)
-    if sum(values) / len(values) > 2 * value:
-        flags.append(DISPERSION)
+    dispersion = sum(values) / len(values) > 2 * value
 
     return EngagementMeasure(
         status=MEASURED,
@@ -171,11 +231,16 @@ def measure_engagement(
         value=value,
         sample_size=len(readable),
         unreadable_count=len(unreadable),
-        window_start=start.isoformat(),
-        window_end=snapshot.isoformat(),
+        window_start=_stamp(start),
+        window_end=_stamp(snapshot),
         window_mode=mode,
-        flags=tuple(flags),
-        read_at=profile.followers_read_at,
+        flags=_quality_flags(
+            sample_size=len(readable),
+            unreadable_count=len(unreadable),
+            mode=mode,
+            dispersion=dispersion,
+        ),
+        read_at=_stamp(snapshot),
         sample_hash=_hash(readable),
     )
 
@@ -190,13 +255,13 @@ def _window(
     """Return (candidates, unreadable, readable) for one window.
 
     The platform's types are selected first, then the most recent ``max_items``
-    are kept, then structural exclusions are removed. A replay must not consume
-    one of the ten Twitch slots, and a pinned post must not hide a publication.
+    are kept, then structural exclusions are removed. A pinned post therefore
+    consumes one of the slots and does not allow a 31st item to enter (M10).
     """
     floor = snapshot - timedelta(days=days)
     in_window = []
     for item in sample:
-        if item.item_kind not in policy.kinds:
+        if _kind(item) not in policy.kinds:
             continue
         published = _published(item)
         if published is None:
@@ -204,11 +269,18 @@ def _window(
         if floor <= published <= snapshot:
             in_window.append((published, item))
 
-    in_window.sort(key=lambda pair: pair[0], reverse=True)
+    in_window.sort(
+        key=lambda pair: (
+            pair[0],
+            pair[1].item_url or "",
+            pair[1].item_id or "",
+        ),
+        reverse=True,
+    )
     kept = [item for _, item in in_window[:max_items]]
 
     candidates = [
-        item for item in kept if item.exclusion_reason not in _STRUCTURAL_EXCLUSIONS
+        item for item in kept if _reason(item) not in _STRUCTURAL_EXCLUSIONS
     ]
     unreadable = [item for item in candidates if not _is_readable(item)]
     readable = [item for item in candidates if _is_readable(item)]
@@ -216,9 +288,12 @@ def _window(
 
 
 def _is_readable(item: EngagementItem) -> bool:
-    if not item.readable or not item.item_url or item.value is None:
-        return False
-    return item.exclusion_reason != _UNREADABLE_REASON
+    return bool(
+        item.readable
+        and item.item_url
+        and item.value is not None
+        and _reason(item) != _UNREADABLE_REASON
+    )
 
 
 def _mostly_unreadable(window) -> bool:
@@ -234,9 +309,11 @@ def _median(values: list[Fraction]) -> Fraction:
     return (ordered[middle - 1] + ordered[middle]) / 2
 
 
-def _snapshot(sample: list[EngagementItem], profile: EngagementProfile) -> datetime | None:
-    """One snapshot means one timestamp for the items and the followers (M-03)."""
-    stamps = {_parse(item.read_at) for item in sample}
+def _snapshot(
+    relevant: list[EngagementItem], profile: EngagementProfile
+) -> datetime | None:
+    """One snapshot means one timestamp for relevant items and followers (M-03)."""
+    stamps = {_parse(item.read_at) for item in relevant}
     followers_stamp = _parse(profile.followers_read_at)
     if None in stamps or followers_stamp is None or len(stamps) != 1:
         return None
@@ -255,24 +332,39 @@ def _parse(value: str | None) -> datetime | None:
         return None
     try:
         parsed = datetime.fromisoformat(value)
-    except ValueError:
+    except (TypeError, ValueError):
         return None
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=UTC)
     return parsed
 
 
+def _stamp(value: datetime) -> str:
+    """One canonical representation, so equal instants hash the same."""
+    return value.astimezone(UTC).isoformat()
+
+
 def _hash(items: list[EngagementItem]) -> str:
-    payload = "\n".join(
-        sorted(
-            f"{item.item_id or item.item_url}|{item.published_at}|{item.value}"
-            for item in items
+    rows = []
+    for item in items:
+        published = _parse(item.published_at)
+        rows.append(
+            "|".join(
+                (
+                    platform_key(item.platform) or item.platform,
+                    item.item_id or "",
+                    item.item_url or "",
+                    _kind(item),
+                    _stamp(published) if published else item.published_at,
+                    str(item.value),
+                )
+            )
         )
-    )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha256("\n".join(sorted(rows)).encode("utf-8")).hexdigest()[:16]
 
 
-def _platform_key(platform: str | None) -> str | None:
+def platform_key(platform: str | None) -> str | None:
+    """Normalize a platform label to the key used by the policies."""
     if not platform:
         return None
     key = platform.strip().lower().replace("-", " ").replace("_", " ")
@@ -282,19 +374,123 @@ def _platform_key(platform: str | None) -> str | None:
     )
 
 
-def _unknown(*, measure_kind: str | None, reason: str) -> EngagementMeasure:
+def _kind(item: EngagementItem) -> str:
+    return (item.item_kind or "").strip().upper()
+
+
+def _reason(item: EngagementItem) -> str | None:
+    reason = (item.exclusion_reason or "").strip().upper()
+    return reason or None
+
+
+def _is_relevant(item: EngagementItem, policy: Policy) -> bool:
+    return _kind(item) in policy.kinds and _reason(item) not in _STRUCTURAL_EXCLUSIONS
+
+
+def _validate_item(item: EngagementItem) -> None:
+    if _kind(item) not in _KNOWN_KINDS:
+        raise ValueError(f"unknown engagement item kind: {item.item_kind!r}")
+    reason = _reason(item)
+    if reason is not None and reason not in _KNOWN_EXCLUSIONS:
+        raise ValueError(
+            f"unknown engagement exclusion reason: {item.exclusion_reason!r}"
+        )
+    if item.value is not None and (
+        isinstance(item.value, bool)
+        or not isinstance(item.value, (int, Fraction))
+    ):
+        raise ValueError(
+            "an engagement value must be an integer, a Fraction, or None"
+        )
+
+
+def _has_out_of_domain(candidates: list[EngagementItem]) -> bool:
+    return any(
+        item.readable
+        and item.value is not None
+        and item.value < 0
+        and _reason(item) != _UNREADABLE_REASON
+        for item in candidates
+    )
+
+
+def _quality_flags(
+    *,
+    sample_size: int,
+    unreadable_count: int,
+    mode: str,
+    dispersion: bool = False,
+) -> tuple[str, ...]:
+    flags = []
+    if MIN_READABLE <= sample_size <= WEAK_UP_TO:
+        flags.append(WEAK_SAMPLE)
+    if mode == FALLBACK:
+        flags.append(WINDOW_EXTENDED)
+    if dispersion:
+        flags.append(DISPERSION)
+    if unreadable_count:
+        flags.append(UNREADABLE)
+    return tuple(flags)
+
+
+def _profile_read_at(profile: EngagementProfile) -> str | None:
+    parsed = _parse(profile.followers_read_at)
+    return _stamp(parsed) if parsed else None
+
+
+def _refuse_window(
+    *,
+    measure_kind: str,
+    reason: str,
+    snapshot: datetime,
+    start: datetime,
+    mode: str,
+    readable: list[EngagementItem],
+    unreadable: list[EngagementItem],
+) -> EngagementMeasure:
+    return _unknown(
+        measure_kind=measure_kind,
+        reason=reason,
+        read_at=_stamp(snapshot),
+        sample_size=len(readable),
+        unreadable_count=len(unreadable),
+        window_start=_stamp(start),
+        window_end=_stamp(snapshot),
+        window_mode=mode,
+        flags=_quality_flags(
+            sample_size=len(readable),
+            unreadable_count=len(unreadable),
+            mode=mode,
+        ),
+        sample_hash=_hash(readable),
+    )
+
+
+def _unknown(
+    *,
+    measure_kind: str | None,
+    reason: str,
+    read_at: str | None = None,
+    sample_size: int = 0,
+    unreadable_count: int = 0,
+    window_start: str | None = None,
+    window_end: str | None = None,
+    window_mode: str | None = None,
+    flags: tuple[str, ...] = (),
+    sample_hash: str | None = None,
+) -> EngagementMeasure:
     return EngagementMeasure(
         status=UNKNOWN,
         measure_kind=measure_kind,
         statistic=MEDIAN,
         value=None,
-        sample_size=0,
-        unreadable_count=0,
-        window_start=None,
-        window_end=None,
-        window_mode=None,
-        flags=(),
-        read_at=None,
-        sample_hash=None,
+        sample_size=sample_size,
+        unreadable_count=unreadable_count,
+        window_start=window_start,
+        window_end=window_end,
+        window_mode=window_mode,
+        flags=flags,
+        read_at=read_at,
+        sample_hash=sample_hash if sample_hash is not None else _hash([]),
         reason=reason,
     )

@@ -226,7 +226,7 @@ vérifient qu'une moyenne ne peut pas entrer dans le score.
 | Phase | Travail | Livrable vérifiable |
 |---|---|---|
 | P0 | Figer les cas V1 à V14 et M1 à M10 avec le superviseur, avant toute ligne de code | tableau signé, versionné avec les critères |
-| P1 | Écrire la fonction pure de mesure de l'engagement, puis la fonction pure de score ; les deux modules sont aujourd'hui vides | M1 à M10 passent, puis V1 à V14, dont V2 et V4 |
+| P1 | Fonction pure de mesure de l'engagement et fonction pure de score ; les deux modules sont écrits | M1 à M10 et V1 à V14 passent, dont V2 et V4 |
 | P2 | Brancher les deux étapes entre l'enrichissement et l'éligibilité ; écrire la fiche de score | une fiche produite, relue à la main, identique au calcul manuel |
 | P3 | Rejouer sur l'échantillon de référence (30 créateurs et 30 acheteurs, vérifiés à la main) | 100 % d'identité avec le calcul manuel, écarts expliqués |
 | P4 | Rapport de distribution : combien de scores, combien d'incomplets, combien de revues | volume de revue par semaine, accepté par le superviseur |

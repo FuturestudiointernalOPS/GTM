@@ -3,14 +3,17 @@
 The measure is tested on its own, then handed to the score to prove the two
 stages agree on the points. M1 and M2 carry that double check.
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fractions import Fraction
+
+import pytest
 
 from processing.engagement import (
     CONCURRENT_VIEWERS,
     DISPERSION,
     FALLBACK,
     MEASURED,
+    TIME,
     UNKNOWN,
     UNREADABLE,
     WEAK_SAMPLE,
@@ -37,15 +40,21 @@ def item(
     days_ago=1,
     readable=True,
     reason=None,
+    read_at=READ,
+    published_at=None,
+    item_url=None,
 ):
-    published = datetime.fromisoformat(READ) - timedelta(days=days_ago)
+    if published_at is None:
+        published = datetime.fromisoformat(READ) - timedelta(days=days_ago)
+        published_at = published.isoformat()
     return EngagementItem(
         platform=platform,
-        item_url=f"https://example.test/{platform}/{kind}/{days_ago}/{value}",
+        item_url=item_url
+        or f"https://example.test/{platform}/{kind}/{days_ago}/{value}",
         item_kind=kind,
-        published_at=published.isoformat(),
+        published_at=published_at,
         value=value,
-        read_at=READ,
+        read_at=read_at,
         readable=readable,
         exclusion_reason=reason,
     )
@@ -103,8 +112,8 @@ def test_m3_four_readable_items_are_not_enough():
 
 def test_m4_unreadable_items_are_counted_not_hidden():
     sample = items(6) + [
-        item(value=0, days_ago=7, readable=False),
-        item(value=0, days_ago=8, readable=False),
+        item(value=0, days_ago=7, readable=False, reason="UNREADABLE"),
+        item(value=0, days_ago=8, readable=False, reason="UNREADABLE"),
     ]
 
     measure = measure_engagement(sample, profile())
@@ -147,13 +156,18 @@ def test_m7_a_channel_with_only_live_streams_is_unknown():
 
 def test_m8_more_than_half_unreadable_is_unknown():
     sample = items(4) + [
-        item(value=0, days_ago=offset, readable=False) for offset in range(5, 11)
+        item(value=0, days_ago=offset, readable=False, reason="UNREADABLE")
+        for offset in range(5, 11)
     ]
 
     measure = measure_engagement(sample, profile())
 
     assert measure.status == UNKNOWN
     assert measure.reason == "mostly_unreadable"
+    assert measure.sample_size == 4
+    assert measure.unreadable_count == 6
+    assert measure.window_mode == "TIME"
+    assert UNREADABLE in measure.flags
 
 
 def test_m9_a_clip_never_enters_the_median():
@@ -226,3 +240,146 @@ def test_items_from_another_platform_are_ignored():
 
     assert measure.sample_size == 12
     assert measure.value == 12_000
+
+
+# --- snapshot, domain and determinism ---------------------------------------
+
+
+def test_an_excluded_replay_does_not_break_the_snapshot():
+    streams = items(10, platform="twitch", kind="STREAM", value=1_200)
+    replay = item(
+        platform="twitch",
+        kind="VOD",
+        value=30_000,
+        days_ago=2,
+        read_at="2026-11-09T12:00:00+00:00",
+    )
+
+    measure = measure_engagement(streams + [replay], profile("twitch"))
+
+    assert measure.status == MEASURED
+    assert measure.value == 1_200
+
+
+def test_an_irrelevant_short_does_not_break_the_snapshot():
+    videos = items(12, platform="youtube", kind="LONG_VIDEO")
+    short = item(
+        platform="youtube",
+        kind="SHORT",
+        value=900_000,
+        days_ago=2,
+        read_at="2026-11-09T12:00:00+00:00",
+    )
+
+    measure = measure_engagement(videos + [short], profile("youtube"))
+
+    assert measure.status == MEASURED
+    assert measure.sample_size == 12
+
+
+def test_a_negative_value_is_out_of_domain():
+    sample = items(12)
+    sample[0] = item(value=-1, days_ago=1)
+
+    measure = measure_engagement(sample, profile())
+
+    assert measure.status == UNKNOWN
+    assert measure.reason == "out_of_domain"
+    assert measure.sample_size == 12
+
+
+def test_unknown_measure_keeps_its_diagnostics():
+    measure = measure_engagement(items(4), profile())
+
+    assert measure.status == UNKNOWN
+    assert measure.reason == "sample_too_small"
+    assert measure.read_at == READ
+    assert measure.sample_size == 4
+    assert measure.window_mode == FALLBACK
+    assert measure.window_start is not None
+    assert measure.window_end == READ
+    assert WINDOW_EXTENDED in measure.flags
+    assert measure.sample_hash
+
+
+def test_ties_at_the_cap_are_deterministic():
+    sample = [
+        item(platform="twitch", kind="STREAM", value=value, days_ago=1)
+        for value in range(1, 12)
+    ]
+
+    first = measure_engagement(sample, profile("twitch"))
+    second = measure_engagement(list(reversed(sample)), profile("twitch"))
+
+    assert first == second
+    assert first.sample_size == 10
+
+
+def test_hash_ignores_timestamp_representation():
+    first = [item(value=12_000, days_ago=index + 1) for index in range(12)]
+    second = [
+        item(
+            value=12_000,
+            days_ago=index + 1,
+            published_at=(
+                datetime.fromisoformat(READ) - timedelta(days=index + 1)
+            )
+            .astimezone(timezone(timedelta(hours=1)))
+            .isoformat(),
+        )
+        for index in range(12)
+    ]
+
+    assert measure_engagement(first, profile()) == measure_engagement(
+        second, profile()
+    )
+
+
+def test_unsupported_platform_is_unknown():
+    measure = measure_engagement(items(12), profile("instagram"))
+
+    assert measure.status == UNKNOWN
+    assert measure.reason == "platform_without_policy"
+    assert measure.measure_kind is None
+    assert measure.read_at == READ
+
+
+def test_unknown_item_kind_is_rejected():
+    with pytest.raises(ValueError, match="item kind"):
+        measure_engagement([item(kind="ARTICLE")], profile())
+
+
+def test_unknown_exclusion_reason_is_rejected():
+    with pytest.raises(ValueError, match="exclusion reason"):
+        measure_engagement([item(reason="SPONSORED")], profile())
+
+
+def test_twitch_has_no_fallback():
+    measure = measure_engagement(
+        items(4, platform="twitch", kind="STREAM", value=1_200), profile("twitch")
+    )
+
+    assert measure.status == UNKNOWN
+    assert measure.reason == "sample_too_small"
+    assert measure.window_mode == TIME
+    assert WINDOW_EXTENDED not in measure.flags
+
+
+def test_primary_window_is_used_when_five_items_exist():
+    sample = items(5) + items(10, start=40)
+
+    measure = measure_engagement(sample, profile())
+
+    assert measure.status == MEASURED
+    assert measure.window_mode == TIME
+    assert measure.sample_size == 5
+    assert WEAK_SAMPLE in measure.flags
+
+
+def test_cap_keeps_thirty_items():
+    sample = [item(value=value, days_ago=1) for value in range(1, 41)]
+
+    measure = measure_engagement(sample, profile())
+
+    assert measure.status == MEASURED
+    assert measure.sample_size == 30
