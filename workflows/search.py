@@ -126,6 +126,7 @@ def discover_specs(
                     "url": url,
                     "query": spec.text,
                     "query_used": query_used,
+                    "service": spec.service,
                 }
             )
         log.info("Search discovery: %s page(s) after %r", len(pages), spec.text)

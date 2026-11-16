@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from urllib.parse import urlsplit
 
 from integrations import telegram_directory
-from workflows.query_pool import Query
+from workflows.query_pool import Query, search_specs
 from workflows.search import clean_queries, discover, discover_specs, extract
 
 log = logging.getLogger(__name__)
@@ -124,7 +124,7 @@ def hunt_plan(
     to build the list; a combined plan also works, but buyer-only pages are not
     creator-platform pages and are dropped.
     """
-    specs = [query.as_search_spec() for query in plan]
+    specs = search_specs(plan)
     found = discover_specs(
         specs,
         num_results=num_results,

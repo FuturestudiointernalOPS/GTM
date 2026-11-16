@@ -96,6 +96,7 @@ def test_plain_queries_fall_back_to_their_text(monkeypatch):
 
     assert pages[0]["query_used"] == "plain query"
     assert pages[0]["query"] == "plain query"
+    assert pages[0]["service"] == "exa"
 
 
 def test_an_empty_spec_is_refused(monkeypatch):
@@ -132,6 +133,7 @@ def test_discover_specs_dispatches_to_serpapi(monkeypatch):
         "num_results": 10,
     }
     assert pages[0]["query_used"] == "buyer.ads.esports"
+    assert pages[0]["service"] == "serpapi"
 
 
 def test_serpapi_refuses_the_exa_only_date_filter():

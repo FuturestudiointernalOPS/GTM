@@ -9,7 +9,7 @@ adds that query explicitly once the check exists.
 import logging
 from collections.abc import Sequence
 
-from workflows.query_pool import Query
+from workflows.query_pool import Query, search_specs
 from workflows.search import clean_queries, discover, discover_specs, extract
 
 log = logging.getLogger(__name__)
@@ -87,7 +87,7 @@ def hunt_plan(
     id). Use ``query_pool.buyer_plan`` to build the list; betting queries stay
     out unless the caller explicitly added them after a licence check.
     """
-    specs = [query.as_search_spec() for query in plan]
+    specs = search_specs(plan)
     found = discover_specs(
         specs,
         num_results=num_results,

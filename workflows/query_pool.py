@@ -19,7 +19,7 @@ so the tracker can tell which query produced a lead that later scores 70+.
 """
 import hashlib
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from typing import TypeVar
 
@@ -85,6 +85,9 @@ class Query:
     market: str = "RU"
     young_audience: bool = False
     betting: bool = False
+    # Which backend runs this query. The value is a rule, not a model choice:
+    # conceptual discovery goes to Exa, exact-token lookups go to SerpApi.
+    service: str = "exa"
 
     def as_search_spec(self) -> SearchSpec:
         """Convert to the execution layer, keeping the stable id for tracking."""
@@ -276,6 +279,7 @@ BUYER_ADS = (
         betting=True,
     ),
 )
+BUYER_ADS = tuple(replace(query, service="serpapi") for query in BUYER_ADS)
 
 BUYER_SPONSORS = (
     Query(
@@ -320,6 +324,9 @@ BUYER_SPONSORS = (
         "партнёрство киберспортивная организация пресс-релиз 2026",
         "Communiqué de partenariat esport",
     ),
+)
+BUYER_SPONSORS = tuple(
+    replace(query, service="serpapi") for query in BUYER_SPONSORS
 )
 
 BUYER_CATEGORIES = (
@@ -381,6 +388,9 @@ BUYER_CATEGORIES = (
         "Étude de cas d'intégration de marque",
     ),
 )
+BUYER_CATEGORIES = tuple(
+    replace(query, service="serpapi") for query in BUYER_CATEGORIES
+)
 
 BUYER_TIMING = (
     Query(
@@ -427,6 +437,7 @@ BUYER_TIMING = (
         "Lancement d'un périphérique gaming",
     ),
 )
+BUYER_TIMING = tuple(replace(query, service="serpapi") for query in BUYER_TIMING)
 
 CIS_KZ_STREAMERS = CreatorTemplate(
     "kz_streamers",
@@ -468,6 +479,9 @@ CIS_BUYER_QUERIES = (
         exclude_domains=CREATOR_EXCLUDED_DOMAINS,
         market="BY",
     ),
+)
+CIS_BUYER_QUERIES = tuple(
+    replace(query, service="serpapi") for query in CIS_BUYER_QUERIES
 )
 
 BETTING_QUERIES = tuple(
@@ -529,6 +543,19 @@ def engine_specs(
     return tuple(query.as_engine_spec(engine=engine) for query in queries)
 
 
+def search_specs(queries: Sequence[Query]) -> tuple[SearchSpec, ...]:
+    """Convert a plan to the right backend for each query's service.
+
+    This is the deterministic router: the ``service`` field, not the model,
+    decides whether a query goes to Exa (natural language) or SerpApi (classic
+    operators).
+    """
+    return tuple(
+        query.as_search_spec() if query.service == "exa" else query.as_engine_spec()
+        for query in queries
+    )
+
+
 def betting_compatible_games() -> tuple[Game, ...]:
     """Games that may be paired with a betting campaign.
 
@@ -582,6 +609,7 @@ def company_queries(company: str) -> tuple[Query, ...]:
             text=template.text.format(company=company),
             engine_query=template.engine.format(company=company),
             target=f"{template.target} — {company}",
+            service="serpapi",
         )
         for template in COMPANY_TEMPLATES
     )

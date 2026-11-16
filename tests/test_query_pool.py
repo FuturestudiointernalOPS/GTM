@@ -128,6 +128,35 @@ def test_buyer_queries_keep_the_original_label_syntax_for_engines():
     assert '"' not in query.text
 
 
+def test_buyer_queries_route_to_serpapi():
+    buyers = (
+        qp.BUYER_ADS
+        + qp.BUYER_SPONSORS
+        + qp.BUYER_CATEGORIES
+        + qp.BUYER_TIMING
+        + qp.CIS_BUYER_QUERIES
+    )
+    creators = (
+        qp.all_creator_model_queries()
+        + qp.GENERAL_CREATOR_QUERIES
+        + qp.CIS_CREATOR_QUERIES
+    )
+
+    assert all(query.service == "serpapi" for query in buyers)
+    assert all(query.service == "exa" for query in creators)
+
+
+def test_search_specs_respect_each_query_service():
+    creator = _model("twitch", "cs2")
+    buyer = next(q for q in qp.BUYER_ADS if q.id == "buyer.ads.games_promo")
+
+    specs = qp.search_specs([creator, buyer])
+
+    assert specs[0].service == "exa"
+    assert specs[1].service == "serpapi"
+    assert specs[1].engine == "google"
+
+
 def test_company_queries_are_stable_and_professional_only():
     first = qp.company_queries("ООО Игра")
     second = qp.company_queries("ООО Игра")
