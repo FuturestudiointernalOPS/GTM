@@ -40,3 +40,14 @@ DATABASE_URL = optional("DATABASE_URL")
 RKN_SEARCH_URL = optional("RKN_SEARCH_URL")
 RKN_QUERY_FIELD = optional("RKN_QUERY_FIELD")
 RKN_ALLOWED_DOMAINS = optional("RKN_ALLOWED_DOMAINS")
+
+# Sanctions lists. "SOURCE=url,SOURCE=url" (for example
+# "OFAC_SDN=https://.../sdn.csv,EU=https://.../list.csv,UK=https://.../list.json").
+# Each source is read independently: an unreadable list suspends the screening,
+# it never clears it.
+SANCTIONS_LIST_URLS = optional("SANCTIONS_LIST_URLS")
+
+# Betting licence registries, one URL per country: "RU=https://...,KZ=https://...".
+# A country without a URL is not mapped, which suspends the qualification instead
+# of guessing (verification.md §5).
+BETTING_LICENCE_URLS = optional("BETTING_LICENCE_URLS")

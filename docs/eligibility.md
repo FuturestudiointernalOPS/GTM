@@ -115,9 +115,10 @@ Deux points de lecture :
 | 3 | pas une marque de paris | `NOT_APPLICABLE` | `ELIGIBLE` | `QUALIFIED` |
 | 4 | licence vérifiée et active | `VERIFIED` | `ELIGIBLE` | `QUALIFIED` |
 | 5 | licence révoquée, suspendue, annulée | `VERIFIED` | `INELIGIBLE` | `INELIGIBLE` |
+| 5 bis | activité autorisée incompatible avec la campagne | `VERIFIED` | `INELIGIBLE` | `INELIGIBLE` |
 | 6 | titulaire différent, ou aucune licence (E-B-04) | `MISMATCH`, `NOT_FOUND` | `INELIGIBLE` | `INELIGIBLE` |
 | 7 | pays non cartographié (§5) | `PENDING` | suspendue | `TO_REVIEW` |
-| 8 | licence non vérifiable | `PENDING` | suspendue | `TO_REVIEW` |
+| 8 | licence non vérifiable, ou état absent du registre | `PENDING` | suspendue | `TO_REVIEW` |
 
 La ligne 5 mérite attention : le fait est **établi** (`VERIFIED`) et la décision
 est un refus. Une licence révoquée n'est pas une vérification échouée.
@@ -233,6 +234,53 @@ parce que l'adresse de la page n'est pas forcément dans la colonne qu'un dev
 choisirait. Le nom vient du lien de fiche, l'identifiant technique du dernier
 segment numérique de cette fiche.
 
+### Les listes de sanctions
+
+`integrations/sanctions.py` télécharge chaque source configurée, lit le fichier
+(JSON ou CSV) et confie les noms à `processing/sanctions.py` avec la source qui
+les a produits.
+
+| Réglage | Rôle |
+|---|---|
+| `SANCTIONS_LIST_URLS` | `SOURCE=url,SOURCE=url` (`OFAC_SDN`, `EU`, `UK_OFSI`…) |
+
+Quatre règles :
+
+- **une correspondance ouvre une revue, elle ne rejette jamais** (E-B-01) :
+  l'écran est volontairement généreux — nom identique, alias, ou nom contenu
+  (à partir de 6 caractères, pour que « АО » ne matche pas la moitié de la
+  liste) ;
+- **une liste illisible suspend** : `PENDING`, jamais « propre ». Les autres
+  sources continuent d'être lues, et celles qui ont échoué sont nommées ;
+- **aucune liste lue, ou aucun nom exploitable** → `PENDING` ;
+- **une lecture propre nomme ses sources** (`SCREENED:OFAC_SDN`) : un « propre »
+  daté et attribuable, pas une case vide.
+
+### Les licences de paris
+
+`integrations/licence.py` lit un export JSON par pays, `processing/licence.py`
+applique §3.6. Le contrat d'export est minimal :
+`[{"number", "holder", "activity", "status", "country", "domains"}]`.
+
+| Réglage | Rôle |
+|---|---|
+| `BETTING_LICENCE_URLS` | `RU=https://...,KZ=https://...` |
+
+Six règles :
+
+- **pays sans adresse** → `COUNTRY_NOT_MAPPED` → suspendu (§5), jamais rejeté ;
+- **registre illisible** → `REGISTRY_UNAVAILABLE` → suspendu ;
+- **numéro introuvable** (ou titulaire introuvable) → `NOT_FOUND` → inéligible ;
+- **titulaire différent** → `MISMATCH` → inéligible ;
+- **licence révoquée ou suspendue** → `VERIFIED` mais inactive : le fait est
+  établi, la décision est un refus ;
+- **état absent de l'export** → `PENDING` : une licence dont le registre ne dit
+  pas l'état n'est pas vérifiable, et un document fourni par l'entreprise n'est
+  jamais lu (V-18).
+
+L'activité autorisée est comparée à celle que la campagne permet : une activité
+incompatible donne `VERIFIED` + inéligible, pas « vérification échouée ».
+
 ## 9. Sortir d'une revue, et déroger
 
 Deux chemins humains, distincts d'un contrôle automatique :
@@ -250,14 +298,18 @@ qu'il s'agit d'une dérogation, par qui, jusqu'à quand.
 
 ## 10. Ce qui n'est pas encore fait
 
-1. **L'adaptation au formulaire réel.** Le client, la lecture des lignes et la
-   comparaison existent et sont testés, mais le balisage du service n'a pas été
-   confronté à une vraie réponse : il faudra un premier passage réel pour ajuster
-   les sélecteurs et les noms de champs. Les listes de sanctions et les registres
-   de licences ne sont pas interrogés du tout.
-2. **La catégorie exclue (E-B-02)** et **la publicité sans étiquette (E-B-03)**
+1. **L'adaptation aux formats réels.** Les trois clients (registre, sanctions,
+   licences) existent et sont testés contre des réponses simulées, mais aucun
+   n'a encore rencontré un vrai export : les sélecteurs du registre, les noms de
+   colonnes des listes de sanctions et le schéma des exports de licences
+   demandent un premier passage réel.
+2. **La couverture des listes.** `SANCTIONS_LIST_URLS` et
+   `BETTING_LICENCE_URLS` sont vides tant que les adresses officielles ne sont
+   pas confirmées (source, date, version).
+3. **La catégorie exclue (E-B-02)** et **la publicité sans étiquette (E-B-03)**
    ne sont pas des contrôles de cette étape : la première relève d'un fait à
    établir, la seconde de la collecte.
-3. **Le domaine officiel du registre.** Il est maintenant configuré
-   (`RKN_ALLOWED_DOMAINS`) et une réponse d'un autre domaine part en revue ; il
-   reste à confirmer la liste elle-même auprès de la source.
+4. **La comparaison des domaines.** `LicenceRecord.domains` est lu, mais la
+   règle « domaine absent ou source périmée → revue » (V-11, §3.4) n'est pas
+   encore appliquée : elle demande une date de dernière vérification par
+   registre.

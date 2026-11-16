@@ -235,6 +235,17 @@ def test_a_licence_held_by_another_company_is_ineligible():
     assert decide_buyer(buyer(license_status="MISMATCH")).status == INELIGIBLE
 
 
+def test_an_incompatible_activity_makes_the_brand_ineligible():
+    decision = decide_buyer(buyer(license_activity_allowed=False))
+
+    assert decision.status == INELIGIBLE
+    assert "activité" in decision.justification
+
+
+def test_an_allowed_activity_qualifies():
+    assert decide_buyer(buyer(license_activity_allowed=True)).status == ELIGIBLE
+
+
 def test_an_absent_licence_is_ineligible():
     assert decide_buyer(buyer(license_status=NOT_FOUND)).status == INELIGIBLE
 

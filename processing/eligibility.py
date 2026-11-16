@@ -109,6 +109,7 @@ class BuyerVerification:
     betting_brand: bool
     license_status: str | None = None
     license_active: bool | None = None
+    license_activity_allowed: bool | None = None
     country_mapped: bool | None = None
     license_reasons: tuple[str, ...] = ()
     license_source_url: str | None = None
@@ -286,6 +287,13 @@ def decide_buyer(verification: BuyerVerification) -> EligibilityDecision:
                 status=INELIGIBLE,
                 workflow_status="INELIGIBLE",
                 justification="licence révoquée, suspendue ou annulée",
+                checks=tuple(checks),
+            )
+        if verification.license_activity_allowed is False:
+            return EligibilityDecision(
+                status=INELIGIBLE,
+                workflow_status="INELIGIBLE",
+                justification="activité autorisée incompatible avec la campagne",
                 checks=tuple(checks),
             )
         return EligibilityDecision(
