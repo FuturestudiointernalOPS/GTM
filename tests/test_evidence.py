@@ -1,5 +1,6 @@
 """Tests for the evidence ledger and the no-invented-facts rule."""
 from processing.evidence import (
+    OBSERVED,
     UNVERIFIED,
     EvidenceLedger,
     Source,
@@ -41,3 +42,10 @@ def test_an_empty_ledger_rejects_every_asserted_claim():
     assert missing_evidence({"followers": 1}, ledger) == ["followers"]
     assert missing_evidence({"followers": None}, ledger) == []
     assert UNVERIFIED == "UNVERIFIED"
+
+
+def test_evidence_carries_a_proof_level():
+    ledger = EvidenceLedger()
+    ledger.add("followers", 42_000, _source())
+
+    assert ledger.for_key("followers")[0].proof_level == OBSERVED

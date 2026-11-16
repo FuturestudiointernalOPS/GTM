@@ -7,10 +7,15 @@ inventing facts.
 """
 from dataclasses import dataclass, field
 
-# Confidence levels mirror the scope's three proof levels.
+# Confidence says how sure the reader is; the proof level says what kind of fact
+# it is. Only OBSERVED and DECLARED facts may score (P-01, Q-04).
 VERIFIED = "VERIFIED"
 PARTIAL = "PARTIAL"
 UNVERIFIED = "UNVERIFIED"
+
+OBSERVED = "OBSERVED"
+DECLARED = "DECLARED"
+INFERRED = "INFERRED"
 
 
 @dataclass(frozen=True)
@@ -31,6 +36,7 @@ class Evidence:
     value: object
     source: Source
     confidence: str = UNVERIFIED
+    proof_level: str = OBSERVED
 
 
 @dataclass
@@ -46,9 +52,16 @@ class EvidenceLedger:
         source: Source,
         *,
         confidence: str = UNVERIFIED,
+        proof_level: str = OBSERVED,
     ) -> None:
         self.evidence.append(
-            Evidence(key=key, value=value, source=source, confidence=confidence)
+            Evidence(
+                key=key,
+                value=value,
+                source=source,
+                confidence=confidence,
+                proof_level=proof_level,
+            )
         )
 
     def keys(self) -> set[str]:
