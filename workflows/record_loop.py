@@ -57,13 +57,20 @@ _QUERY_CATALOG = {query.id: query for query in query_pool.all_queries()}
 
 @dataclass(frozen=True)
 class Candidate:
-    """One page to turn into a scored record."""
+    """One page to turn into a scored record.
+
+    ``tax_id`` and ``legal_name`` only concern a buyer. They come from the
+    labelled advertisement, which is where a buyer is born (scope §6.6); a page
+    without them still gets a score in memory, but no buyer record is created.
+    """
 
     kind: str
     record_id: str
     source_url: str
     text: str
     read_at: str
+    tax_id: str | None = None
+    legal_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -121,10 +128,21 @@ def candidates_from_pages(pages, reads=(), *, read_at: str) -> list[Candidate]:
                 source_url=url,
                 text=text,
                 read_at=read_at,
+                tax_id=_first(page, "tax_id", "inn", "ogrn"),
+                legal_name=_first(page, "legal_name"),
             )
         )
 
     return candidates
+
+
+def _first(page: Mapping, *keys: str) -> str | None:
+    """The first non-empty value among ``keys``, as text."""
+    for key in keys:
+        value = page.get(key)
+        if value not in (None, ""):
+            return str(value)
+    return None
 
 
 def score_pages(

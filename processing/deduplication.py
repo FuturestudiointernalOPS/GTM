@@ -60,6 +60,21 @@ def normalize_handle(handle: str) -> str | None:
     return handle or None
 
 
+# Legal names are compared, never displayed: keep the letters and digits, drop
+# the typography that varies between a registry and a website.
+_LEGAL_NAME_NOISE = str.maketrans({character: " " for character in "«»\"“”'’,."})
+
+
+def normalize_legal_name(name: str) -> str | None:
+    """Return a comparable form of a legal name, or None when it is empty.
+
+    ``ООО «Тест»`` and ``ООО Тест`` are the same entity; the raw name stays in
+    ``legal_name``, this form is only the key used to compare two records.
+    """
+    text = (name or "").translate(_LEGAL_NAME_NOISE)
+    return " ".join(text.split()).casefold() or None
+
+
 class JsonRecordStore:
     """A persisted set of known URLs and handles.
 

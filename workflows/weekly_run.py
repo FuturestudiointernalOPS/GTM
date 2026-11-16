@@ -70,7 +70,12 @@ def run_and_score(
 
     record_for = None
     if records is not None:
-        record_for = lambda candidate: ensure_record(records, candidate)
+        record_for = lambda candidate: ensure_record(
+            records,
+            candidate,
+            tax_id=candidate.tax_id,
+            legal_name=candidate.legal_name,
+        )
 
     scores = score_pages(
         provider,
