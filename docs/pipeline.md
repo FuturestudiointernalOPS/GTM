@@ -83,11 +83,20 @@ enrichissement          fait -> mesure typée, unité et domaine contrôlés
    |
    v
 score                   points exacts, décision, lignes prêtes pour la base
+   |
+   v
+écriture                mesure -> id, puis score et lignes
 ```
 
 Les contrats sont `docs/extraction.md`, `docs/enrichment.md`,
 `docs/engagement.md` et `docs/scoring.md`. Le parcours qui les enchaîne est dans
-`workflows/record_flow.py` : il rend le calcul et les lignes, il n'écrit rien.
+`workflows/record_flow.py` ; l'écriture est dans `integrations/postgres.py`.
+
+L'ordre d'écriture compte : la mesure est écrite d'abord, son identifiant est
+rattaché à la ligne d'engagement, puis le score et ses lignes sont écrits. Une
+fiche rejetée n'écrit rien — c'est une décision, pas un score de zéro. Le module
+d'écriture ne se connecte pas lui-même : l'appelant fournit la connexion et ouvre
+la transaction, ce qui rend le tout testable sans base.
 
 ## Ce qui reste à faire
 
@@ -96,9 +105,10 @@ Les contrats sont `docs/extraction.md`, `docs/enrichment.md`,
    prompt définitif et la validation de la sortie réelle du modèle.
 2. **Score et éligibilité déterministes** — le parcours existe en mémoire
    (`workflows/record_flow.py`) et les règles sont fixées (§3.5,
-   `docs/scoring.md`). Restent la calibration des seuils Rutube et YouTube, le cas
-   VK Video Live seul, l'écriture des lignes en base, et l'extraction réelle des
-   faits qui alimente la chaîne.
+   `docs/scoring.md`). L'écriture des lignes est prête (`integrations/postgres.py`),
+   testée contre une connexion simulée. Restent la calibration des seuils Rutube
+   et YouTube, le cas VK Video Live seul, le branchement d'une vraie connexion et
+   d'une transaction, et l'extraction réelle des faits qui alimente la chaîne.
 3. **Baserow** — remplacer le fichier JSON par la vraie base, sans changer le
    contrat `contains_url` / `contains_handle` / `add`.
 4. **Copilote analyste** — optionnel, en lecture seule, avec budget et liste

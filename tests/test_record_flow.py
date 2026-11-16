@@ -8,7 +8,11 @@ from datetime import datetime, timedelta
 from processing.engagement import EngagementItem
 from processing.evidence import INFERRED, EvidenceLedger, Source
 from processing.scoring import PRESELECTED, QUALIFIED, TO_REVIEW
-from workflows.record_flow import score_buyer_record, score_creator_record
+from workflows.record_flow import (
+    creator_measure,
+    score_buyer_record,
+    score_creator_record,
+)
 
 READ = "2026-11-10T12:00:00+00:00"
 
@@ -136,6 +140,23 @@ def test_an_inferred_claim_never_scores():
 
     assert "gaming_share: fait inféré, aucun point" in record.rejected
     assert line(record, "focus_gaming")["status"] == "UNKNOWN"
+
+
+def test_the_measure_can_be_written_before_the_score():
+    ledger = evidence_for(CREATOR_CLAIMS)
+    measured = creator_measure(CREATOR_CLAIMS, ledger, items=vk_items())
+
+    assert measured is not None
+    record = score_creator_record(
+        CREATOR_CLAIMS,
+        ledger,
+        measure=measured,
+        measure_run_id="measure-9",
+    )
+
+    assert record.result.score == 79
+    assert line(record, "engagement")["engagement_measure_run_id"] == "measure-9"
+    assert record.measure is measured
 
 
 # --- buyer ------------------------------------------------------------------
