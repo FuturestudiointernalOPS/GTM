@@ -94,10 +94,12 @@ Les contrats sont `docs/extraction.md`, `docs/enrichment.md`,
 
 L'ordre d'écriture compte : la mesure est écrite d'abord, son identifiant est
 rattaché à la ligne d'engagement, puis le score et ses lignes sont écrits. Une
-fiche rejetée n'écrit rien — c'est une décision, pas un score de zéro. Le module
-d'écriture ne se connecte pas lui-même : l'appelant fournit la connexion et ouvre
-la transaction, ce qui rend le tout testable sans base. Pour la production,
-`connect()` lit `DATABASE_URL` et n'importe le pilote qu'à ce moment-là.
+fiche rejetée n'écrit pas de score — c'est une décision, pas un score de zéro ;
+sa fiche et sa mesure, elles, sont conservées, sinon le run suivant la
+recollecterait. Le module d'écriture ne se connecte pas lui-même : l'appelant
+fournit la connexion et ouvre la transaction, ce qui rend le tout testable sans
+base. Pour la production, `connect()` lit `DATABASE_URL` et n'importe le pilote
+qu'à ce moment-là.
 
 ## La boucle par fiche
 
@@ -177,6 +179,53 @@ et la fusion sera un acte explicite.
 Une adresse qui n'est pas un profil — une vidéo, un mur, une page de recherche —
 ne crée rien : l'identité rend « aucune ».
 
+### Le stockage des fiches
+
+`integrations/record_store.py` implémente le contrat `RecordStore` sur une
+connexion PostgreSQL. Trois points valent d'être connus :
+
+- **la référence est assignée par la base.** `CR-000001` / `BY-000001` viennent
+d'un déclencheur sur `record` ; l'insertion ne fournit pas la colonne, ce qui
+évite deux générateurs concurrents.
+- **la plateforme est une donnée de référence.** Elle porte la couverture RKN et
+les contraintes de campagne : le stockage ne l'invente pas, il refuse une
+plateforme absente (`UnknownPlatform`) au lieu d'écrire une fiche orpheline.
+- **un acheteur n'existe pas sans nom juridique.** La colonne est obligatoire, et
+un domaine à la place du nom fausserait la comparaison des fiches. Un acheteur
+naît d'une publicité étiquetée, qui porte le nom et le numéro fiscal ; sans nom,
+la création rend « aucune fiche ».
+
+Le numéro fiscal est rangé dans la colonne que son format accepte : ИНН à 10 ou
+12 chiffres, ОГРН à 13 ou 15, tout autre identifiant dans `tax_id` avec le type
+`OTHER`. Un identifiant déjà présent n'est jamais effacé par un nouveau : la mise
+à jour utilise `COALESCE`.
+
+### Le branchement du parcours
+
+`workflows/postgres_run.py` construit les trois fonctions que `run_and_score`
+attend — le stockage des fiches, l'écriture de la mesure, l'écriture du score —
+à partir d'une seule connexion :
+
+```python
+from workflows.postgres_run import postgres_run
+
+run = postgres_run(connection=connection, provider=provider, fetch=fetch)
+```
+
+Les frontières de transaction sont explicites, parce que le parcours note toutes
+les fiches avant d'écrire le premier score :
+
+| Moment | Transaction |
+|---|---|
+| Notation (fiches, mesures) | une transaction longue, ouverte par l'écriture du premier score |
+| Avant chaque score | `commit` du travail en attente : les fiches et les mesures sont conservées |
+| Score écrit | son propre `commit` |
+| Score refusé ou en erreur | `rollback` du seul score ; le run continue sur une transaction saine |
+
+Sans cette coupure, une erreur d'écriture laisserait la transaction avortée et
+ferait échouer tous les scores suivants : c'est le défaut que les tests de
+`tests/test_postgres_run.py` surveillent.
+
 ## Ce qui reste à faire
 
 1. **Analyse par le modèle avec schéma strict** — le schéma des affirmations est
@@ -185,9 +234,11 @@ ne crée rien : l'identité rend « aucune ».
 2. **Score et éligibilité déterministes** — le parcours existe en mémoire
    (`workflows/record_flow.py`) et les règles sont fixées (§3.5,
    `docs/scoring.md`). L'écriture des lignes est prête (`integrations/postgres.py`),
-   testée contre une connexion simulée. Restent la calibration des seuils Rutube
-   et YouTube, le cas VK Video Live seul, le branchement d'une vraie connexion et
-   d'une transaction, et l'extraction réelle des faits qui alimente la chaîne.
+   les fiches sont créées ou retrouvées (`integrations/record_store.py`) et le run
+   complet est branché (`workflows/postgres_run.py`), testés contre une connexion
+   simulée. Restent la calibration des seuils Rutube et YouTube, le cas VK Video
+   Live seul, l'exécution réelle contre un serveur et l'extraction réelle des
+   faits qui alimente la chaîne.
 3. **Baserow** — remplacer le fichier JSON par la vraie base, sans changer le
    contrat `contains_url` / `contains_handle` / `add`.
 4. **Copilote analyste** — optionnel, en lecture seule, avec budget et liste

@@ -125,6 +125,8 @@ def write_score(
     run = result.to_score_run()
     if run is None:
         return None
+    if record_id is None:
+        raise ValueError("a score needs a record id: no record was found or created")
 
     lines = result.to_score_lines()
     with connection.cursor() as cursor:
