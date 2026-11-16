@@ -5,10 +5,14 @@ criteria the score knows. Value ranges are deliberately not enforced here — a
 bad value must degrade one measure to unknown (S-02), not make the whole record
 fail. The enrichment step owns that judgement.
 
+Every claim must come with a **verbatim quote** from the page it was read on. The
+quote is checked against the page by the loop; a claim without a quote is
+discarded, which is what separates an extraction from an invention.
+
 The field lists must match ``processing/enrichment.py``: the fact keys are the
 contract, and a test asserts the two lists are equal.
 """
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CreatorClaims(BaseModel):
@@ -38,3 +42,21 @@ class BuyerClaims(BaseModel):
     decision_maker_email_verified: bool | None = None
     employee_band: str | None = None
     recent_event: bool | None = None
+
+
+class CreatorExtraction(BaseModel):
+    """Claims plus the excerpts that support them."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    claims: CreatorClaims
+    quotes: dict[str, str] = Field(default_factory=dict)
+
+
+class BuyerExtraction(BaseModel):
+    """Claims plus the excerpts that support them."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    claims: BuyerClaims
+    quotes: dict[str, str] = Field(default_factory=dict)

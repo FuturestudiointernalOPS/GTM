@@ -113,9 +113,13 @@ Deux choix de conception valent d'être connus :
 - **un candidat en erreur n'arrête pas le lot.** Il finit dans la liste des échecs
   avec son motif, les autres continuent.
 
-Limite assumée : l'ancre prouve que le modèle a vu une page, pas qu'il y a lu la
-valeur. Exiger une citation littérale pour chaque affirmation serait la prochaine
-protection ; elle n'existe pas encore.
+Chaque affirmation doit venir avec un **extrait recopié de la page**. Le contrôle
+vérifie que l'extrait s'y trouve vraiment — à la casse et aux espaces près — et
+écarte sinon l'affirmation. Une valeur inventée n'a donc aucune phrase à montrer.
+
+Ce que cela ne prouve pas : que l'interprétation est juste. Un extrait peut
+exister et être mal compris, ou venir d'un autre contexte. La citation élimine
+l'invention, pas l'erreur de lecture ; l'audit humain tranche le reste.
 
 ## Ce qui reste à faire
 

@@ -32,6 +32,26 @@ bornes de valeur ne sont **pas** contrôlées à cette frontière : une part à 
 doit dégrader une seule mesure, pas faire échouer la fiche entière. C'est
 l'enrichissement qui tranche.
 
+La réponse a deux parties : `claims` porte les valeurs, `quotes` porte l'extrait
+qui justifie chaque valeur. Une valeur sans extrait est écartée.
+
+### La citation
+
+Une citation est un **extrait recopié de la page**, pas une reformulation. Pour
+chaque affirmation, la boucle vérifie que l'extrait apparaît réellement dans le
+texte lu, en ignorant la casse et les suites d'espaces — ce sont des détails de
+mise en forme, pas de contenu. Tout le reste est littéral, et un extrait de moins
+de huit caractères est refusé : « 25 » se retrouverait sur n'importe quelle page
+par accident.
+
+À quoi cela sert : une affirmation sans citation est **écartée**, donc la mesure
+correspondante devient inconnue. Une valeur inventée n'a aucune phrase à montrer,
+et le modèle le sait puisqu'on le lui dit.
+
+Ce que cela ne prouve pas : que l'interprétation est juste. Un extrait peut
+exister et être mal compris, ou être tiré d'un autre contexte. La citation
+élimine l'invention, pas l'erreur de lecture ; c'est l'audit humain qui tranche.
+
 Un test vérifie que la liste des champs du schéma est identique à la liste des
 clés du contrat d'enrichissement, pour que les deux ne puissent pas diverger.
 
@@ -95,3 +115,6 @@ vrai.
   refusées, chacune avec son motif, et ne produisent aucun fait.
 - Une valeur vide ne produit ni fait ni refus.
 - Une inférence suivie d'une observation retient l'observation, avec son adresse.
+- Une affirmation sans citation, ou dont la citation ne se trouve pas dans la
+  page, est écartée ; la casse et les espaces ne comptent pas, le reste est
+  littéral.

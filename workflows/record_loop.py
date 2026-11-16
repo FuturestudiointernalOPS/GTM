@@ -9,12 +9,12 @@ Evidence is partitioned per record. Two creators may both claim a gaming share,
 and their facts must not collide in one ledger; each candidate therefore gets its
 own ledger, built from its own claims and its own source.
 
-The anchor proves the model was shown a page, not that it read the value. Asking
-for a verbatim quote per claim is the next hardening step, not a property of this
-loop yet.
+The anchor proves the model was shown a page, not that it read the value. So
+every claim must come with a verbatim excerpt, and the loop checks that the
+excerpt really appears in the page: a claim without one is dropped.
 """
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from ai.provider import AIProvider
 from processing.engagement import EngagementItem
@@ -29,6 +29,10 @@ from workflows.record_flow import (
 
 MAX_TEXT = 20_000
 
+# Shortest excerpt accepted, once whitespace and case are normalised. A shorter
+# one ("25", "60") would match by accident on almost any page.
+MIN_QUOTE = 8
+
 
 @dataclass(frozen=True)
 class Candidate:
@@ -42,6 +46,14 @@ class Candidate:
 
 
 @dataclass(frozen=True)
+class Claims:
+    """What the model asserted, and the excerpts it says support it."""
+
+    values: dict
+    quotes: dict
+
+
+@dataclass(frozen=True)
 class LoopResult:
     """What one batch produced, and which records could not be scored."""
 
@@ -49,7 +61,7 @@ class LoopResult:
     failed: tuple[tuple[str, str], ...] = ()
 
 
-def collect_claims(provider: AIProvider, candidate: Candidate) -> dict:
+def collect_claims(provider: AIProvider, candidate: Candidate) -> Claims:
     """Ask the model about one page and keep the claims it is allowed to make."""
     payload = {
         "source_url": candidate.source_url,
@@ -61,7 +73,37 @@ def collect_claims(provider: AIProvider, candidate: Candidate) -> dict:
         model = provider.extract_buyer(payload)
     else:
         raise ValueError(f"unknown candidate kind: {candidate.kind}")
-    return model.model_dump(exclude_none=True)
+    return Claims(
+        values=model.claims.model_dump(exclude_none=True),
+        quotes=dict(model.quotes),
+    )
+
+
+def verify_quotes(claims: Claims, *, text: str) -> tuple[dict, tuple[str, ...]]:
+    """Keep only the claims backed by an excerpt actually present in the page.
+
+    Matching ignores case and runs of whitespace: those are formatting, not
+    content. Everything else is literal.
+    """
+    page = _normalize((text or "")[:MAX_TEXT])
+    kept: dict = {}
+    rejected: list[str] = []
+
+    for key, value in claims.values.items():
+        quote = _normalize(claims.quotes.get(key, ""))
+        if len(quote) < MIN_QUOTE:
+            rejected.append(f"{key}: citation manquante ou trop courte")
+            continue
+        if quote not in page:
+            rejected.append(f"{key}: citation introuvable dans la page")
+            continue
+        kept[key] = value
+
+    return kept, tuple(rejected)
+
+
+def _normalize(text: str) -> str:
+    return " ".join(text.split()).casefold()
 
 
 def record_claims(
@@ -87,19 +129,23 @@ def score_candidate(
     measure_run_id: str | None = None,
 ) -> RecordScore:
     """Turn one candidate into a score, with its own evidence."""
-    claims = collect_claims(provider, candidate)
+    collected = collect_claims(provider, candidate)
+    values, rejected = verify_quotes(collected, text=candidate.text)
     ledger = record_claims(
-        claims, source_url=candidate.source_url, read_at=candidate.read_at
+        values, source_url=candidate.source_url, read_at=candidate.read_at
     )
 
     if candidate.kind == CREATOR:
-        return score_creator_record(
-            claims,
+        record = score_creator_record(
+            values,
             ledger,
             items=items,
             measure_run_id=measure_run_id,
         )
-    return score_buyer_record(claims, ledger)
+    else:
+        record = score_buyer_record(values, ledger)
+
+    return replace(record, rejected=tuple(rejected) + record.rejected)
 
 
 def score_candidates(

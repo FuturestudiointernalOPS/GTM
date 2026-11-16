@@ -14,9 +14,14 @@ PROMPTS = (
 )
 
 
-class FakeProvider(AIProvider):
+class EmptyAnswer(AIProvider):
     def chat(self, system: str, user: str) -> str:
         return "{}"
+
+
+class ClaimsAnswer(AIProvider):
+    def chat(self, system: str, user: str) -> str:
+        return '{"claims": {}}'
 
 
 def test_every_prompt_file_exists_and_is_not_empty():
@@ -35,10 +40,8 @@ def test_every_prompt_file_exists_and_is_not_empty():
 
 
 def test_every_provider_method_can_read_its_prompt():
-    provider = FakeProvider()
-
-    assert provider.analyze_creator({}) == {}
-    assert provider.analyze_buyer({}) == {}
-    assert provider.generate_outreach({}) == {}
-    assert provider.extract_creator({}) is not None
-    assert provider.extract_buyer({}) is not None
+    assert EmptyAnswer().analyze_creator({}) == {}
+    assert EmptyAnswer().analyze_buyer({}) == {}
+    assert EmptyAnswer().generate_outreach({}) == {}
+    assert ClaimsAnswer().extract_creator({}).claims.followers is None
+    assert ClaimsAnswer().extract_buyer({}).claims.creators_paid is None

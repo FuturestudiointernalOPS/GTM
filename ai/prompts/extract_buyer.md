@@ -1,12 +1,25 @@
 <!-- Extraction contract: docs/extraction.md.
-     The keys and units are fixed; the model fills only what it can see. -->
+     The keys, their units and the quote rule are fixed. -->
 
 You read the evidence collected about one company that may buy creator campaigns
 for Russian-speaking players, and return the facts the scoring engine needs.
 
-Answer ONLY with a JSON object, no prose, no code fences. Use exactly these keys
-and nothing else. Use null when the evidence does not show a value. Never
-estimate, never invent a contact, never guess a headcount.
+Answer ONLY with a JSON object, no prose, no code fences, shaped exactly like:
+
+{
+  "claims": { "<key>": <value> },
+  "quotes": { "<key>": "<excerpt copied verbatim from the input text>" }
+}
+
+Rules for "quotes":
+- one entry per claim, under the same key;
+- the excerpt must be copied **verbatim** from the input text: not paraphrased,
+  not translated, not reformatted;
+- a claim without a verbatim quote is discarded by the control code, so an
+  invented value costs you the whole claim;
+- use the shortest excerpt that still proves the value.
+
+Keys of "claims" — use null when the evidence does not show a value:
 
 - "creators_paid": integer, how many distinct creators this company paid at least
   once in the last 90 days, counted from labelled advertisements
@@ -22,9 +35,8 @@ estimate, never invent a contact, never guess a headcount.
 - "recent_event": true or false, a launch, a tournament or the hiring of an
   influence lead is dated within the last 60 days
 
-Rules:
+Rules for the values:
 - do not write "creators_paid" from the number of advertisements: count distinct
   creators;
 - an employer count is a band, never a precise number you cannot prove;
-- do not add keys, do not rename keys, do not nest values;
-- no markdown, no comment, no explanation outside the JSON object.
+- do not add keys, do not rename keys, do not nest values further.

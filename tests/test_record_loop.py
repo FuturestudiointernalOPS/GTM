@@ -1,8 +1,8 @@
 """Tests for the per-record collection loop.
 
-One candidate in, one score out. The tests cover the two design choices that
-matter: evidence is anchored to the page the candidate carries, and it is
-partitioned per record so two creators cannot contradict each other.
+One candidate in, one score out. The tests cover three design choices: evidence
+is anchored to the page, it is partitioned per record, and a claim survives only
+if its verbatim quote really appears on the page.
 """
 import json
 from datetime import datetime, timedelta
@@ -15,49 +15,76 @@ from processing.engagement import EngagementItem
 from processing.scoring import PRESELECTED, TO_REVIEW
 from workflows.record_loop import (
     Candidate,
+    Claims,
     collect_claims,
     record_claims,
     score_candidate,
     score_candidates,
+    verify_quotes,
 )
 
 READ = "2026-11-10T12:00:00+00:00"
 
+QUOTES = {
+    "gaming_share": "60 % гейминг",
+    "gaming_window": "окно 30 публикаций",
+    "followers": "25 000 подписчиков",
+    "published_last_30_days": "7 публикаций за 30 дней",
+    "ad_contact_or_rate_card": "по вопросам рекламы",
+    "past_labeled_ads": "реклама с erid",
+    "main_platform": "платформа VK Video",
+    "russian_comment_share": "70 % комментариев",
+    "comment_sample": "50 сообщений",
+}
 
-def claims_answer(gaming_share=60):
-    return json.dumps(
-        {
-            "gaming_share": gaming_share,
-            "gaming_window": 30,
-            "followers": 25_000,
-            "published_last_30_days": 7,
-            "ad_contact_or_rate_card": True,
-            "past_labeled_ads": False,
-            "main_platform": "VK Video",
-            "russian_comment_share": 70,
-            "comment_sample": 50,
-        }
-    )
+CLAIMS = {
+    "gaming_share": 60,
+    "gaming_window": 30,
+    "followers": 25_000,
+    "published_last_30_days": 7,
+    "ad_contact_or_rate_card": True,
+    "past_labeled_ads": False,
+    "main_platform": "VK Video",
+    "russian_comment_share": 70,
+    "comment_sample": 50,
+}
+
+
+def page(share=60):
+    quotes = dict(QUOTES, gaming_share=f"{share} % гейминг")
+    return " | ".join(quotes.values()) + "."
+
+
+def answer(share=60, *, drop=None, override=None, extra=None):
+    claims = dict(CLAIMS, gaming_share=share)
+    quotes = dict(QUOTES, gaming_share=f"{share} % гейминг")
+    if drop:
+        quotes.pop(drop, None)
+    if override:
+        quotes.update(override)
+    if extra:
+        claims.update(extra)
+    return json.dumps({"claims": claims, "quotes": quotes})
 
 
 class FakeProvider(AIProvider):
     """Answers from a function of the payload, so each page can differ."""
 
-    def __init__(self, answer):
-        self.answer = answer
+    def __init__(self, reply):
+        self.reply = reply
         self.calls = 0
 
     def chat(self, system: str, user: str) -> str:
         self.calls += 1
-        return self.answer(json.loads(user))
+        return self.reply(json.loads(user))
 
 
-def candidate(record_id="rec-1", url="https://vk.com/creator", kind="CREATOR"):
+def candidate(record_id="rec-1", url="https://vk.com/creator", share=60, kind="CREATOR"):
     return Candidate(
         kind=kind,
         record_id=record_id,
         source_url=url,
-        text="Подписчики: 25 000. 60 % гейминг.",
+        text=page(share),
         read_at=READ,
     )
 
@@ -82,9 +109,7 @@ def items(count=30, value=2_000):
 
 def test_one_candidate_becomes_a_scored_record():
     record = score_candidate(
-        FakeProvider(lambda payload: claims_answer()),
-        candidate(),
-        items=items(),
+        FakeProvider(lambda payload: answer()), candidate(), items=items()
     )
 
     assert record.result.score == 79
@@ -94,15 +119,15 @@ def test_one_candidate_becomes_a_scored_record():
 
 
 def test_without_a_sample_the_record_stays_in_review():
-    record = score_candidate(FakeProvider(lambda payload: claims_answer()), candidate())
+    record = score_candidate(FakeProvider(lambda payload: answer()), candidate())
 
     assert record.result.proposal == TO_REVIEW
 
 
 def test_the_claims_are_anchored_to_the_candidate_page():
-    claims = {"gaming_share": 60, "followers": 25_000}
-
-    ledger = record_claims(claims, source_url="https://vk.com/x", read_at=READ)
+    ledger = record_claims(
+        {"gaming_share": 60}, source_url="https://vk.com/x", read_at=READ
+    )
 
     fact = ledger.for_key("gaming_share")[0]
     assert fact.source.url == "https://vk.com/x"
@@ -112,24 +137,74 @@ def test_the_claims_are_anchored_to_the_candidate_page():
 def test_an_unknown_candidate_kind_is_refused():
     with pytest.raises(ValueError):
         collect_claims(
-            FakeProvider(lambda payload: claims_answer()),
-            Candidate(kind="MASCOT", record_id="x", source_url="u", text="", read_at=READ),
+            FakeProvider(lambda payload: answer()),
+            Candidate(
+                kind="MASCOT",
+                record_id="x",
+                source_url="u",
+                text="",
+                read_at=READ,
+            ),
         )
+
+
+# --- the quote is checked ---------------------------------------------------
+
+
+def test_a_missing_quote_costs_the_claim():
+    record = score_candidate(
+        FakeProvider(lambda payload: answer(drop="gaming_share")),
+        candidate(),
+        items=items(),
+    )
+
+    assert "gaming_share: citation manquante ou trop courte" in record.rejected
+    assert record.result.proposal == TO_REVIEW
+    assert record.result.score == 61
+
+
+def test_a_quote_absent_from_the_page_is_dropped():
+    kept, rejected = verify_quotes(
+        Claims(values={"followers": 1}, quotes={"followers": "42 000 подписчиков"}),
+        text="25 000 подписчиков",
+    )
+
+    assert kept == {}
+    assert rejected == ("followers: citation introuvable dans la page",)
+
+
+def test_a_too_short_quote_is_dropped():
+    kept, rejected = verify_quotes(
+        Claims(values={"followers": 1}, quotes={"followers": "25 000"}),
+        text="25 000 подписчиков",
+    )
+
+    assert kept == {}
+    assert rejected == ("followers: citation manquante ou trop courte",)
+
+
+def test_a_quote_is_matched_ignoring_case_and_spacing():
+    kept, rejected = verify_quotes(
+        Claims(values={"followers": 1}, quotes={"followers": "25 000   ПОДПИСЧИКОВ"}),
+        text="подписчики: 25 000 подписчиков",
+    )
+
+    assert kept == {"followers": 1}
+    assert rejected == ()
 
 
 # --- evidence is per record -------------------------------------------------
 
 
 def test_two_creators_do_not_share_their_evidence():
-    def answer(payload):
-        # The URL decides the gaming share: 60 % for "a", 100 % for "b".
-        return claims_answer(60 if "/a" in payload["source_url"] else 100)
+    def reply(payload):
+        return answer(60 if "/a" in payload["source_url"] else 100)
 
     result = score_candidates(
-        FakeProvider(answer),
+        FakeProvider(reply),
         [
-            candidate(record_id="a", url="https://vk.com/a"),
-            candidate(record_id="b", url="https://vk.com/b"),
+            candidate(record_id="a", url="https://vk.com/a", share=60),
+            candidate(record_id="b", url="https://vk.com/b", share=100),
         ],
     )
 
@@ -141,13 +216,13 @@ def test_two_creators_do_not_share_their_evidence():
 
 
 def test_a_bad_answer_is_listed_and_the_batch_continues():
-    def answer(payload):
+    def reply(payload):
         if "/bad" in payload["source_url"]:
-            return '{"gaming_share": 60, "invented_key": true}'
-        return claims_answer()
+            return answer(extra={"invented_key": True})
+        return answer()
 
     result = score_candidates(
-        FakeProvider(answer),
+        FakeProvider(reply),
         [
             candidate(record_id="bad", url="https://vk.com/bad"),
             candidate(record_id="good", url="https://vk.com/good"),
@@ -161,5 +236,6 @@ def test_a_bad_answer_is_listed_and_the_batch_continues():
 def test_an_invented_key_fails_at_the_border():
     with pytest.raises(ValidationError):
         collect_claims(
-            FakeProvider(lambda payload: '{"invented_key": 1}'), candidate()
+            FakeProvider(lambda payload: '{"claims": {"invented_key": 1}}'),
+            candidate(),
         )
