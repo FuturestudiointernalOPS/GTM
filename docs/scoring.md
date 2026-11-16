@@ -233,9 +233,9 @@ vérifient qu'une moyenne ne peut pas entrer dans le score.
 | P5 | Documenter l'étape et incrémenter la version des critères | cadrage et base d'accord, historique conservé |
 
 P0 et P1 sont faits pour le score : les cas V1 à V14 sont écrits dans les tests
-du module de score et passent. Les cas M1 à M10 relèvent de l'étape de mesure
-(E2 de `docs/engagement.md`) et restent à écrire : la fonction de mesure n'existe
-pas encore. P2 reste à brancher dans le pipeline.
+du module de score et passent. La fonction de mesure de l'engagement et les cas
+M1 à M10 sont écrits eux aussi (`docs/engagement.md`). P2 reste à brancher dans
+le pipeline.
 
 P0 n'est pas une formalité : sans valeurs attendues signées, un écart entre le
 code et la règle se tranche à la discussion, et c'est ainsi qu'un 74 apparaît.

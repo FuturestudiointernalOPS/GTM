@@ -111,6 +111,7 @@ Le résultat de la mesure contient :
 | `flags` | `WEAK_SAMPLE`, `WINDOW_EXTENDED`, `DISPERSION`, `UNREADABLE` |
 | `read_at` | instantané de lecture |
 | `sample_hash` | empreinte des éléments retenus |
+| `reason` | diagnostic quand la mesure est inconnue (`sample_too_small`, `mostly_unreadable`, `snapshot_mismatch`, `empty_sample`, `platform_without_policy`) ; jamais un critère |
 
 Le résultat ne contient ni le ratio ni les points : le score les calcule. Cette
 séparation permet de tester la mesure sans tester le barème.
@@ -231,6 +232,11 @@ calcul des points ne relit jamais l'échantillon ; il reçoit la médiane.
 | **E5** | Fiche et file de revue : affichage, drapeaux, recalcul | une fiche auditable sans relire la plateforme | Intern 2 | E4 |
 | **E6** | Pilote de 30 à 50 créateurs par plateforme, calibration Rutube et YouTube | rapport de distribution, décision de seuil | Superviseur + tous | E4, E5 |
 | **E7** | Runbook, surveillance, passation | documentation et alertes en place | Intern 3 + Intern 2 | E6 |
+
+E2 est fait : la fonction pure de mesure et les cas M1 à M10 sont écrits et
+passent (`processing/engagement.py`, `tests/test_engagement.py`). Les étapes E1
+(contrat de données) et E3 (collecteurs) restent à faire, donc la mesure n'est
+pas encore alimentée par de vraies lectures.
 
 ```mermaid
 flowchart TD
