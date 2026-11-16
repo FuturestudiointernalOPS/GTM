@@ -16,6 +16,7 @@ from decimal import Decimal
 from fractions import Fraction
 
 from config import settings
+from processing import eligibility
 from processing.engagement import MEASURED, EngagementMeasure
 from processing.scoring import (
     CRITERIA_VERSION,
@@ -322,6 +323,8 @@ def _exact_text(value: Fraction | None) -> str | None:
 
 SELECT_FICHE = "SELECT workflow_status, score FROM record WHERE id = %s"
 
+SELECT_KIND = "SELECT kind, workflow_status, score FROM record WHERE id = %s"
+
 RETIRE_CHECK = """
 UPDATE eligibility_check
 SET is_current = false
@@ -348,6 +351,14 @@ INSERT INTO eligibility_decision_check (decision_id, check_id) VALUES (%s, %s)
 
 UPDATE_ELIGIBILITY = """
 UPDATE record SET eligibility_status = %s, updated_at = now() WHERE id = %s
+"""
+
+INSERT_EXCEPTION_DECISION = """
+INSERT INTO eligibility_decision (
+    record_id, status, justification, decided_by, criteria_version,
+    exception_owner, exception_justification, exception_valid_until
+) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+RETURNING id
 """
 
 
@@ -423,28 +434,184 @@ def write_eligibility(
                 cursor.execute(LINK_DECISION_CHECK, (decision_id, check_id))
             cursor.execute(UPDATE_ELIGIBILITY, (decision.status, str(record_id)))
 
-        event_id = None
-        if status != decision.workflow_status:
-            cursor.execute(
-                SELECT_TRANSITION,
-                (
-                    str(record_id),
-                    decision.workflow_status,
-                    decision.justification,
-                    actor,
-                    "ELIGIBILITY",
-                    None,
-                    json.dumps(
-                        {
-                            "eligibility_status": decision.status,
-                            "checks": [item.check_type for item in decision.checks],
-                        }
-                    ),
-                ),
-            )
-            event_id = cursor.fetchone()[0]
+        event_id = _move(
+            cursor,
+            record_id=record_id,
+            current=status,
+            target=decision.workflow_status,
+            justification=decision.justification,
+            actor=actor,
+            payload={
+                "eligibility_status": decision.status,
+                "checks": [item.check_type for item in decision.checks],
+            },
+        )
 
     return None if event_id is None else str(event_id)
+
+
+def write_review_decision(
+    connection,
+    *,
+    record_id,
+    status: str,
+    justification: str,
+    actor: str,
+    criteria_version: str = CRITERIA_VERSION,
+) -> str | None:
+    """Close a review with a human verdict, and move the fiche.
+
+    This is the way out of MANUAL_REVIEW, COMPLIANCE_REVIEW and TO_REVIEW, and
+    the only one: a fiche under review does not leave it by a new automatic
+    score, and H-01 forbids leaving COMPLIANCE_REVIEW without a traced human
+    decision. The verdict, its author and its justification are all required.
+
+    No check is written here: a human decision must rest on checks that already
+    exist, or on a new search. This function records the decision, not the
+    evidence.
+    """
+    if record_id is None:
+        raise ValueError("a review decision needs a record id")
+    verdict = (status or "").strip()
+    if verdict not in {
+        eligibility.ELIGIBLE,
+        eligibility.INELIGIBLE,
+        eligibility.REGULATORY_PENDING,
+    }:
+        raise ValueError(f"unknown eligibility verdict: {status!r}")
+    reason = (justification or "").strip()
+    if not reason:
+        raise ValueError("a review decision needs a justification")
+
+    with connection.cursor() as cursor:
+        kind, current, score = _read_fiche(cursor, record_id)
+        if score is None:
+            raise ValueError("a record without a score cannot be declared eligible")
+        if current not in eligibility.REVIEW_STATUSES:
+            raise ValueError(
+                f"record {record_id} is not under review: {current}"
+            )
+
+        cursor.execute(
+            INSERT_ELIGIBILITY_DECISION,
+            (str(record_id), verdict, reason, actor, criteria_version),
+        )
+        cursor.execute(UPDATE_ELIGIBILITY, (verdict, str(record_id)))
+
+        target = eligibility.workflow_status_for(verdict, kind)
+        event_id = _move(
+            cursor,
+            record_id=record_id,
+            current=current,
+            target=target,
+            justification=reason,
+            actor=actor,
+            payload={"eligibility_status": verdict, "checks": []},
+        )
+
+    return None if event_id is None else str(event_id)
+
+
+def write_exception(
+    connection,
+    *,
+    record_id,
+    owner: str,
+    justification: str,
+    valid_until,
+    actor: str,
+    criteria_version: str = CRITERIA_VERSION,
+) -> str | None:
+    """Record a signed derogation, and qualify the fiche.
+
+    ``EXCEPTION_APPROVED`` is never a verification (V-22): the owner, the
+    justification and the end date are all required, by this function and by the
+    schema. The fiche moves to the status a positive verdict would give it, and
+    the journal says the decision was an exception, by whom, until when.
+    """
+    if record_id is None:
+        raise ValueError("an exception needs a record id")
+    responsible = (owner or "").strip()
+    reason = (justification or "").strip()
+    if not responsible or not reason or not valid_until:
+        raise ValueError(
+            "an exception needs an owner, a justification and an end date"
+        )
+
+    text = (
+        f"dérogation de {responsible}, valable jusqu'au {valid_until} : {reason}"
+    )
+
+    with connection.cursor() as cursor:
+        kind, current, score = _read_fiche(cursor, record_id)
+        if score is None:
+            raise ValueError("a record without a score cannot be declared eligible")
+        if current == "REJECTED":
+            raise ValueError("a rejected record is not eligible")
+
+        cursor.execute(
+            INSERT_EXCEPTION_DECISION,
+            (
+                str(record_id),
+                eligibility.EXCEPTION_APPROVED,
+                text,
+                actor,
+                criteria_version,
+                responsible,
+                reason,
+                valid_until,
+            ),
+        )
+        cursor.execute(
+            UPDATE_ELIGIBILITY, (eligibility.EXCEPTION_APPROVED, str(record_id))
+        )
+
+        target = eligibility.workflow_status_for(eligibility.ELIGIBLE, kind)
+        event_id = _move(
+            cursor,
+            record_id=record_id,
+            current=current,
+            target=target,
+            justification=text,
+            actor=actor,
+            payload={
+                "eligibility_status": eligibility.EXCEPTION_APPROVED,
+                "exception_owner": responsible,
+                "exception_valid_until": str(valid_until),
+                "checks": [],
+            },
+        )
+
+    return None if event_id is None else str(event_id)
+
+
+def _read_fiche(cursor, record_id) -> tuple[str, str, int | None]:
+    cursor.execute(SELECT_KIND, (str(record_id),))
+    row = cursor.fetchone()
+    if row is None:
+        raise LookupError(f"record {record_id} does not exist")
+    return row[0], row[1], row[2]
+
+
+def _move(
+    cursor, *, record_id, current, target, justification, actor, payload
+) -> str | None:
+    """Ask ``transition_record()`` for a status change, if there is one."""
+    if current == target:
+        return None
+    cursor.execute(
+        SELECT_TRANSITION,
+        (
+            str(record_id),
+            target,
+            justification,
+            actor,
+            "ELIGIBILITY",
+            None,
+            json.dumps(payload),
+        ),
+    )
+    return cursor.fetchone()[0]
 
 
 def _numeric(value: Fraction | None) -> Decimal | None:

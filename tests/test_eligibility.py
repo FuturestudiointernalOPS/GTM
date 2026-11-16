@@ -3,6 +3,8 @@
 The table is pure: same checks, same verdict. The tests walk it row by row, and
 check that doubt always suspends rather than passes.
 """
+import pytest
+
 from processing import eligibility
 from processing.eligibility import (
     BETTING_LICENSE,
@@ -26,6 +28,7 @@ from processing.eligibility import (
     CreatorVerification,
     decide_buyer,
     decide_creator,
+    workflow_status_for,
 )
 
 
@@ -267,3 +270,26 @@ def test_unavailable_sanctions_lists_come_before_the_licence():
 
 def test_the_threshold_is_a_single_documented_constant():
     assert eligibility.RKN_FOLLOWER_THRESHOLD == 10_000
+
+
+# --- the move a human verdict implies ---------------------------------------
+
+
+def test_a_positive_verdict_qualifies_a_buyer_and_preselects_a_creator():
+    assert workflow_status_for(ELIGIBLE, "CREATOR") == PRESELECTED
+    assert workflow_status_for(ELIGIBLE, "BUYER") == QUALIFIED
+
+
+def test_a_negative_verdict_is_ineligible_for_both_filons():
+    assert workflow_status_for(INELIGIBLE, "CREATOR") == "INELIGIBLE"
+    assert workflow_status_for(INELIGIBLE, "BUYER") == "INELIGIBLE"
+
+
+def test_a_pending_verdict_sends_each_filon_to_its_review_queue():
+    assert workflow_status_for(REGULATORY_PENDING, "CREATOR") == MANUAL_REVIEW_STATUS
+    assert workflow_status_for(REGULATORY_PENDING, "BUYER") == TO_REVIEW
+
+
+def test_an_unknown_verdict_is_refused():
+    with pytest.raises(ValueError, match="unknown eligibility status"):
+        workflow_status_for("MAYBE", "CREATOR")

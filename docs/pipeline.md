@@ -281,9 +281,17 @@ Deux garde-fous sont dans le code, pas dans la discipline de l'opérateur :
 - une fiche **sans score** ne peut pas être déclarée éligible ;
 - une fiche **rejetée** non plus.
 
-Ce qui manque encore : la **collecte** des contrôles. Rien n'interroge Gosuslugi,
-les listes de sanctions ou un registre de licences ; l'étape est prête à recevoir
-ces résultats, et les produire est le travail suivant.
+Ce qui manque encore : le **client de recherche**. Rien n'interroge Gosuslugi,
+les listes de sanctions ou un registre de licences. La comparaison d'une
+recherche avec une page est écrite et testée (`processing/rkn.py`) : un même nom
+sur une autre URL est un `MISMATCH`, un service muet est `PENDING`, jamais une
+absence — mais la recherche elle-même est injectée, et son client reste à faire.
+
+Deux chemins humains complètent l'étape : `write_review_decision` clôt une revue
+avec un verdict, un auteur et une justification, sans écrire de contrôle ;
+`write_exception` enregistre une dérogation avec responsable, justification et
+date de fin, puis qualifie la fiche. Aucun des deux ne peut passer par-dessus le
+score : une fiche sans score n'est éligible à rien.
 
 ## Ce qui reste à faire
 
@@ -296,11 +304,12 @@ ces résultats, et les produire est le travail suivant.
    (`integrations/postgres.py`), les fiches sont créées ou retrouvées
    (`integrations/record_store.py`), le run complet est branché
    (`workflows/postgres_run.py`) et la table d'éligibilité est implémentée
-   (`processing/eligibility.py`, `docs/eligibility.md`), testés contre une
-   connexion simulée. Restent la calibration des seuils Rutube et YouTube, le cas
-   VK Video Live seul, la **collecte** des contrôles d'éligibilité, l'exécution
-   réelle contre un serveur et l'extraction réelle des faits qui alimente la
-   chaîne.
+   (`processing/eligibility.py`, `docs/eligibility.md`), avec la comparaison au
+   registre (`processing/rkn.py`) et les deux issues humaines (revue, dérogation),
+   testés contre une connexion simulée. Restent la calibration des seuils Rutube
+   et YouTube, le cas VK Video Live seul, le **client** de recherche du registre
+   et des sanctions, l'exécution réelle contre un serveur et l'extraction réelle
+   des faits qui alimente la chaîne.
 3. **Baserow** — remplacer le fichier JSON par la vraie base, sans changer le
    contrat `contains_url` / `contains_handle` / `add`.
 4. **Copilote analyste** — optionnel, en lecture seule, avec budget et liste

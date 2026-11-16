@@ -168,19 +168,64 @@ Un contrôle vaut par sa date et sa source : `checked_at` et `checked_by` sont
 écrits à chaque passage, et le payload conserve l'adresse consultée. Requêter le
 registre deux fois n'efface pas la première trace, cela la rend historique.
 
+Une décision humaine suit le même chemin : `write_review_decision` et
+`write_exception` écrivent une ligne `eligibility_decision`, mettent à jour
+`record.eligibility_status`, puis demandent le mouvement à `transition_record()`.
+La dérogation remplit en plus ses trois colonnes propres (`exception_owner`,
+`exception_justification`, `exception_valid_until`), que le schéma rend
+obligatoires pour ce statut.
+
 ---
 
-## 8. Ce qui n'est pas encore fait
+## 8. Comparer une recherche au registre
 
-1. **La collecte des contrôles.** Rien n'interroge encore Gosuslugi, les listes
-   de sanctions ni les registres de licences. L'étape lit des résultats ; les
-   produire est le travail suivant, et il est humain ou instrumenté, jamais
-   confié au modèle (V-19).
-2. **La dérogation.** `EXCEPTION_APPROVED` existe dans le schéma, avec ses champs
-   obligatoires ; aucune fonction ne l'écrit, et c'est voulu.
-3. **Le retour depuis une revue.** `MANUAL_REVIEW` et `COMPLIANCE_REVIEW`
-   attendent une décision humaine tracée (H-01) ; la boucle de retour n'existe
-   pas encore.
-4. **La catégorie exclue (E-B-02)** et **la publicité sans étiquette (E-B-03)**
+`processing/rkn.py` fait la seule partie qui doit être déterministe : décider ce
+qu'une entrée retournée prouve. La recherche elle-même est injectée — le
+formulaire Gosuslugi est public, et son client est le travail du déploiement.
+
+| Situation | Statut | Motif |
+|---|---|---|
+| service indisponible | `PENDING` | `SERVICE_UNAVAILABLE` |
+| aucun résultat | `NOT_FOUND` | `QUERY:…`, `NO_ENTRY` |
+| même URL, même identifiant | `VERIFIED` | `URL_AND_IDENTIFIER_MATCH` |
+| même URL, identifiant indisponible d'un côté | `PARTIAL` | `URL_MATCH_IDENTIFIER_UNAVAILABLE` |
+| même URL, identifiant différent | `MISMATCH` | `IDENTIFIER_MISMATCH` |
+| même nom, URL différente | `MISMATCH` | `NAME_MATCH_URL_DIFFERS` |
+| plusieurs entrées sans correspondance | `MANUAL_REVIEW` | `AMBIGUOUS_ENTRIES` |
+| une entrée sans correspondance | `MANUAL_REVIEW` | `NO_MATCHING_ENTRY` |
+
+Trois garanties :
+
+- **un nom n'est jamais une clé** (V-08) ; il sert de contrôle croisé, et la
+  comparaison est souple — casse, espaces, ponctuation, emoji ;
+- **la requête est enregistrée** dans les motifs (V-04) : un `NOT_FOUND` sans
+  requête ne prouverait rien ;
+- **un service muet n'est pas une absence** : `PENDING`, jamais `NOT_FOUND`.
+  Accuser une page parce qu'un site était en panne serait une faute.
+
+## 9. Sortir d'une revue, et déroger
+
+Deux chemins humains, distincts d'un contrôle automatique :
+
+| Chemin | Fonction | Ce qu'elle exige |
+|---|---|---|
+| Clore une revue | `write_review_decision` | un verdict d'éligibilité, une justification, un auteur ; la fiche doit être en `MANUAL_REVIEW`, `COMPLIANCE_REVIEW` ou `TO_REVIEW` |
+| Déroger | `write_exception` | un responsable, une justification, une date de fin, un auteur |
+
+Le premier **n'écrit aucun contrôle** : une décision humaine repose sur des
+contrôles existants ou sur une nouvelle recherche, et cette fonction enregistre
+la décision, pas la preuve. Le second écrit `EXCEPTION_APPROVED` avec ses trois
+termes — le schéma les impose aussi — puis qualifie la fiche, et le journal dit
+qu'il s'agit d'une dérogation, par qui, jusqu'à quand.
+
+## 10. Ce qui n'est pas encore fait
+
+1. **Le client de recherche.** Rien n'interroge encore Gosuslugi : la comparaison
+   est prête, la recherche est injectée (`processing/rkn.py`). Les listes de
+   sanctions et les registres de licences ne sont pas non plus interrogés.
+2. **La catégorie exclue (E-B-02)** et **la publicité sans étiquette (E-B-03)**
    ne sont pas des contrôles de cette étape : la première relève d'un fait à
    établir, la seconde de la collecte.
+3. **Le domaine officiel du registre.** Un domaine qui imite le service officiel
+   devrait produire `MANUAL_REVIEW` (V-09). Il manque la liste des domaines
+   autorisés pour le faire sans invention.

@@ -21,7 +21,9 @@ from integrations.postgres import (
     is_configured,
     write_decision,
     write_eligibility,
+    write_exception,
     write_measure,
+    write_review_decision,
     write_score,
 )
 from processing.eligibility import (
@@ -435,17 +437,20 @@ class _EligibilityCursor:
 
 
 class EligibilityConnection:
-    def __init__(self, status="SCORED", score=79, exists=True):
+    def __init__(self, status="SCORED", score=79, exists=True, kind="CREATOR"):
         self.log = []
         self.status = status
         self.score = score
         self.exists = exists
+        self.kind = kind
         self.ids = 0
 
     def cursor(self):
         return _EligibilityCursor(self)
 
     def answer(self, sql):
+        if "SELECT kind, workflow_status, score FROM record" in sql:
+            return (self.kind, self.status, self.score) if self.exists else None
         if "SELECT workflow_status, score FROM record" in sql:
             return (self.status, self.score) if self.exists else None
         if "SELECT transition_record" in sql:
@@ -627,6 +632,7 @@ def test_the_eligibility_insert_columns_exist_in_the_schema():
     from integrations.postgres import (
         INSERT_CHECK,
         INSERT_ELIGIBILITY_DECISION,
+        INSERT_EXCEPTION_DECISION,
         LINK_DECISION_CHECK,
     )
 
@@ -634,9 +640,214 @@ def test_the_eligibility_insert_columns_exist_in_the_schema():
     assert insert_columns(INSERT_ELIGIBILITY_DECISION) <= ddl_columns(
         "eligibility_decision"
     )
+    assert insert_columns(INSERT_EXCEPTION_DECISION) <= ddl_columns(
+        "eligibility_decision"
+    )
     assert insert_columns(LINK_DECISION_CHECK) <= ddl_columns(
         "eligibility_decision_check"
     )
+
+
+# --- the way out of a review -------------------------------------------------
+
+
+REASON = "registre consulté à la main : page inscrite le 12 novembre"
+
+
+def verdict_of(connection):
+    return next(
+        params
+        for sql, params in connection.log
+        if "INSERT INTO eligibility_decision " in sql
+        and "exception_owner" not in sql
+    )
+
+
+def test_a_review_outcome_closes_the_review_with_a_human_verdict():
+    connection = EligibilityConnection(status="MANUAL_REVIEW")
+
+    event = write_review_decision(
+        connection,
+        record_id="rec-1",
+        status="ELIGIBLE",
+        justification=REASON,
+        actor="analyst",
+    )
+
+    assert event == "event-9"
+    assert verdict_of(connection)[1] == "ELIGIBLE"
+    assert verdict_of(connection)[3] == "analyst"
+
+    params = transition_of(connection)
+    assert params[1] == "PRESELECTED"
+    assert params[2] == REASON
+    assert params[3] == "analyst"
+
+    update = next(
+        params for sql, params in connection.log if "SET eligibility_status" in sql
+    )
+    assert update == ("ELIGIBLE", "rec-1")
+
+
+def test_a_review_outcome_for_a_buyer_qualifies():
+    connection = EligibilityConnection(status="TO_REVIEW", kind="BUYER")
+
+    write_review_decision(
+        connection,
+        record_id="rec-1",
+        status="ELIGIBLE",
+        justification=REASON,
+        actor="analyst",
+    )
+
+    assert transition_of(connection)[1] == "QUALIFIED"
+
+
+def test_a_confirmed_compliance_hit_makes_the_fiche_ineligible():
+    connection = EligibilityConnection(status="COMPLIANCE_REVIEW")
+
+    write_review_decision(
+        connection,
+        record_id="rec-1",
+        status="INELIGIBLE",
+        justification="correspondance confirmée par l'analyste",
+        actor="compliance",
+    )
+
+    assert transition_of(connection)[1] == "INELIGIBLE"
+
+
+def test_a_review_decision_is_refused_outside_a_review():
+    connection = EligibilityConnection(status="SCORED")
+
+    with pytest.raises(ValueError, match="not under review"):
+        write_review_decision(
+            connection,
+            record_id="rec-1",
+            status="ELIGIBLE",
+            justification=REASON,
+            actor="analyst",
+        )
+
+    assert [sql for sql, _ in connection.log] == [
+        "SELECT kind, workflow_status, score FROM record WHERE id = %s"
+    ]
+
+
+def test_a_review_decision_needs_a_justification():
+    connection = EligibilityConnection(status="MANUAL_REVIEW")
+
+    with pytest.raises(ValueError, match="justification"):
+        write_review_decision(
+            connection,
+            record_id="rec-1",
+            status="ELIGIBLE",
+            justification="  ",
+            actor="analyst",
+        )
+
+    assert connection.log == []
+
+
+def test_a_review_decision_refuses_an_unknown_verdict():
+    connection = EligibilityConnection(status="MANUAL_REVIEW")
+
+    with pytest.raises(ValueError, match="unknown eligibility verdict"):
+        write_review_decision(
+            connection,
+            record_id="rec-1",
+            status="MAYBE",
+            justification=REASON,
+            actor="analyst",
+        )
+
+
+def test_a_review_decision_on_an_unscored_fiche_is_refused():
+    connection = EligibilityConnection(status="MANUAL_REVIEW", score=None)
+
+    with pytest.raises(ValueError, match="without a score"):
+        write_review_decision(
+            connection,
+            record_id="rec-1",
+            status="ELIGIBLE",
+            justification=REASON,
+            actor="analyst",
+        )
+
+
+# --- the exception -----------------------------------------------------------
+
+
+def test_an_exception_qualifies_the_fiche_and_keeps_its_terms():
+    connection = EligibilityConnection(status="INELIGIBLE")
+
+    event = write_exception(
+        connection,
+        record_id="rec-1",
+        owner="Direction",
+        justification="partenariat stratégique signé",
+        valid_until="2027-03-31",
+        actor="admin",
+    )
+
+    assert event == "event-9"
+
+    _, params = next(
+        (sql, params)
+        for sql, params in connection.log
+        if "exception_owner" in sql
+    )
+    assert params[1] == "EXCEPTION_APPROVED"
+    assert params[5] == "Direction"
+    assert params[6] == "partenariat stratégique signé"
+    assert params[7] == "2027-03-31"
+
+    update = next(
+        params for sql, params in connection.log if "SET eligibility_status" in sql
+    )
+    assert update == ("EXCEPTION_APPROVED", "rec-1")
+
+    moved = transition_of(connection)
+    assert moved[1] == "PRESELECTED"
+    assert "Direction" in moved[2]
+    assert "2027-03-31" in moved[2]
+    assert json.loads(moved[6])["exception_owner"] == "Direction"
+
+
+def test_an_exception_needs_its_three_terms():
+    for missing in (
+        {"owner": " "},
+        {"justification": ""},
+        {"valid_until": None},
+    ):
+        connection = EligibilityConnection(status="INELIGIBLE")
+        terms = {
+            "owner": "Direction",
+            "justification": "partenariat",
+            "valid_until": "2027-03-31",
+        }
+        terms.update(missing)
+
+        with pytest.raises(ValueError, match="owner|justification|end date"):
+            write_exception(
+                connection, record_id="rec-1", actor="admin", **terms
+            )
+
+        assert connection.log == []
+
+
+def test_an_exception_is_refused_on_a_rejected_fiche():
+    connection = EligibilityConnection(status="REJECTED")
+
+    with pytest.raises(ValueError, match="rejected"):
+        write_exception(
+            connection,
+            record_id="rec-1",
+            owner="Direction",
+            justification="partenariat",
+            valid_until="2027-03-31",
+            actor="admin",
+        )
 
 
 # --- the connection factory -------------------------------------------------

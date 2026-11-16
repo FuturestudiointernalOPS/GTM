@@ -22,6 +22,7 @@ from dataclasses import dataclass
 ELIGIBLE = "ELIGIBLE"
 INELIGIBLE = "INELIGIBLE"
 REGULATORY_PENDING = "REGULATORY_PENDING"
+EXCEPTION_APPROVED = "EXCEPTION_APPROVED"
 
 # Verification statuses, mirrored from the ``verification_status`` enum. The
 # consequence of a status depends on the question: for the registry, NOT_FOUND
@@ -48,6 +49,14 @@ QUALIFIED = "QUALIFIED"
 TO_REVIEW = "TO_REVIEW"
 MANUAL_REVIEW_STATUS = "MANUAL_REVIEW"
 COMPLIANCE_REVIEW = "COMPLIANCE_REVIEW"
+
+# A human ends one of these; nothing else may leave them (H-01).
+REVIEW_STATUSES = frozenset({MANUAL_REVIEW_STATUS, COMPLIANCE_REVIEW, TO_REVIEW})
+
+# The two filons, as stored in ``record.kind``. Kept as literals here so that
+# ``processing/`` never imports ``workflows/``.
+KIND_CREATOR = "CREATOR"
+KIND_BUYER = "BUYER"
 
 # The registry concerns a page when the platform is listed and the page is above
 # this threshold (V-05). "More than 10 000" is strict: 10 000 exactly is not.
@@ -105,6 +114,21 @@ class BuyerVerification:
     license_source_url: str | None = None
     sanction_status: str | None = None
     sanction_reasons: tuple[str, ...] = ()
+
+
+def workflow_status_for(status: str, kind: str) -> str:
+    """The workflow move an eligibility verdict implies, per filon.
+
+    Used by the human paths — a review outcome and an exception — which decide
+    the verdict themselves and only need the move that follows.
+    """
+    if status == ELIGIBLE:
+        return QUALIFIED if kind == KIND_BUYER else PRESELECTED
+    if status == INELIGIBLE:
+        return "INELIGIBLE"
+    if status == REGULATORY_PENDING:
+        return TO_REVIEW if kind == KIND_BUYER else MANUAL_REVIEW_STATUS
+    raise ValueError(f"unknown eligibility status: {status!r}")
 
 
 def decide_creator(verification: CreatorVerification) -> EligibilityDecision:
