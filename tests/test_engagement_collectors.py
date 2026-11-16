@@ -11,7 +11,7 @@ import pytest
 
 from integrations import engagement_collectors as ec
 from processing.engagement import EngagementProfile, measure_engagement
-from processing.scoring import CreatorMeasures, score_creator
+from processing.scoring import CreatorMeasures, apply_engagement_measure, score_creator
 
 READ = "2026-11-10T12:00:00+00:00"
 
@@ -287,16 +287,20 @@ def test_telegram_collection_feeds_the_measure_and_the_score():
     assert "DISPERSION" in measure.flags
 
     result = score_creator(
-        CreatorMeasures(
-            median_views=measure.value,
-            followers=100_000,
-            engagement_read_at=measure.read_at,
-            engagement_sample=measure.sample_size,
-            platform="telegram",
+        apply_engagement_measure(
+            CreatorMeasures(followers=100_000, platform="telegram"),
+            measure,
+            measure_run_id="run-eng-1",
         )
     )
     engagement = next(line for line in result.lines if line.criterion == "engagement")
     assert engagement.points == 15
+    assert "DISPERSION" in engagement.flags
+
+    row = next(
+        line for line in result.to_score_lines() if line["criterion_code"] == "engagement"
+    )
+    assert row["engagement_measure_run_id"] == "run-eng-1"
 
 
 def test_a_negative_value_is_not_hidden_by_the_normalizer():
