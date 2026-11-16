@@ -49,12 +49,14 @@ class RecordKeys:
 class CreatorIdentity:
     platform: str
     handle: str
+    url: str = ""
 
 
 @dataclass(frozen=True)
 class BuyerIdentity:
     domain: str
     tax_id: str | None = None
+    legal_name: str | None = None
 
 
 class RecordStore(Protocol):
@@ -72,13 +74,17 @@ class RecordStore(Protocol):
 
 
 def ensure_record(
-    store: RecordStore, candidate: Candidate, *, tax_id: str | None = None
+    store: RecordStore,
+    candidate: Candidate,
+    *,
+    tax_id: str | None = None,
+    legal_name: str | None = None,
 ) -> RecordKeys | None:
     """Find the record behind a candidate, or create it."""
     if candidate.kind == CREATOR:
         return ensure_creator(store, candidate)
     if candidate.kind == BUYER:
-        return ensure_buyer(store, candidate, tax_id=tax_id)
+        return ensure_buyer(store, candidate, tax_id=tax_id, legal_name=legal_name)
     return None
 
 
@@ -92,14 +98,23 @@ def ensure_creator(store: RecordStore, candidate: Candidate) -> RecordKeys | Non
 
 
 def ensure_buyer(
-    store: RecordStore, candidate: Candidate, *, tax_id: str | None = None
+    store: RecordStore,
+    candidate: Candidate,
+    *,
+    tax_id: str | None = None,
+    legal_name: str | None = None,
 ) -> RecordKeys | None:
-    identity = buyer_identity(candidate.source_url, tax_id)
+    identity = buyer_identity(candidate.source_url, tax_id, legal_name)
     if identity is None:
         return None
 
     found = store.find_buyer(identity)
     if found is None:
+        # A legal entity is never created without a legal name: the column is
+        # required, and a domain in its place would poison name matching later.
+        # A buyer is born from a labelled advertisement, which carries the name.
+        if not identity.legal_name:
+            return None
         return store.create_buyer(identity, CRITERIA_VERSION)
 
     if identity.tax_id and found.provisional:
@@ -121,15 +136,18 @@ def creator_identity(url: str) -> CreatorIdentity | None:
     handle = _handle(host, segments)
     if handle is None:
         return None
-    return CreatorIdentity(platform=platform, handle=handle)
+    return CreatorIdentity(platform=platform, handle=handle, url=url)
 
 
-def buyer_identity(url: str, tax_id: str | None = None) -> BuyerIdentity | None:
+def buyer_identity(
+    url: str, tax_id: str | None = None, legal_name: str | None = None
+) -> BuyerIdentity | None:
     host, _ = _host_and_segments(url)
     if host is None:
         return None
     cleaned = (tax_id or "").strip()
-    return BuyerIdentity(domain=host, tax_id=cleaned or None)
+    name = " ".join((legal_name or "").split())
+    return BuyerIdentity(domain=host, tax_id=cleaned or None, legal_name=name or None)
 
 
 def _host_and_segments(url: str) -> tuple[str | None, list[str]]:
@@ -228,9 +246,10 @@ class MemoryRecordStore:
         return keys
 
     def attach_tax_id(self, record_id: str, tax_id: str) -> None:
-        for keys in self._buyers_by_domain.values():
+        for domain, keys in list(self._buyers_by_domain.items()):
             if keys.record_id == record_id:
                 promoted = replace(keys, provisional=False)
+                self._buyers_by_domain[domain] = promoted
                 self._buyers_by_tax[tax_id] = promoted
                 return
 
