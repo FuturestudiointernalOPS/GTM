@@ -1,0 +1,2141 @@
+{
+  "version": "1.0",
+  "generated_at": "2026-11-16",
+  "description": "Schéma Baserow des fiches créateur et acheteur. Baserow est l'interface de travail ; PostgreSQL reste la source de vérité des identifiants, faits, scores, éligibilités et historiques (voir docs/data-model.md).",
+  "source_of_truth": {
+    "pg": "PostgreSQL écrit, Baserow affiche en lecture seule.",
+    "baserow": "Saisie ou action humaine dans Baserow, remontée à PostgreSQL par le service de synchronisation.",
+    "derived": "Champ calculé (formula, lookup, count) ; jamais saisi."
+  },
+  "notes": [
+    "Le champ required est un contrat du projet : Baserow n'impose pas lui-même la nullité au niveau du champ. Les formulaires et le service de synchronisation le valident.",
+    "La création des tables se fait en deux passes : toutes les tables, puis les champs link_row, lookup et count, pour résoudre les identifiants de tables.",
+    "Aucune ligne n'est supprimée. Un doublon est relié par merged_into ; une fiche écartée garde son statut.",
+    "Les champs owner=pg ne doivent pas être modifiés dans Baserow. Une correction de fait passe par une nouvelle preuve, jamais par une réécriture silencieuse."
+  ],
+  "tables": [
+    {
+      "name": "Plateformes",
+      "description": "Référentiel versionné de la couverture RKN et des contraintes de campagne.",
+      "primary_field": "name",
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "owner": "pg",
+          "description": "Nom canonique de la plateforme."
+        },
+        {
+          "name": "platform_id",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "UUID PostgreSQL de la plateforme."
+        },
+        {
+          "name": "aliases",
+          "type": "long_text",
+          "required": false,
+          "owner": "pg",
+          "description": "Alias connus, un par ligne."
+        },
+        {
+          "name": "coverage_status",
+          "type": "single_select",
+          "required": true,
+          "owner": "pg",
+          "options": ["COVERED", "NOT_COVERED", "UNKNOWN"],
+          "description": "Couverture par le registre RKN (V-06)."
+        },
+        {
+          "name": "stable_id_available",
+          "type": "single_select",
+          "required": true,
+          "owner": "pg",
+          "options": ["YES", "NO", "UNKNOWN"],
+          "description": "Un identifiant technique stable existe-t-il ?"
+        },
+        {
+          "name": "id_notes",
+          "type": "long_text",
+          "required": false,
+          "owner": "pg",
+          "description": "Nature et limites de l'identifiant technique."
+        },
+        {
+          "name": "risk_level",
+          "type": "single_select",
+          "required": true,
+          "owner": "pg",
+          "options": ["LOW", "MEDIUM", "HIGH", "EXCLUDED", "NOT_ASSESSED"],
+          "description": "Risque plateforme utilisé par le score de sûreté."
+        },
+        {
+          "name": "creator_campaign_allowed",
+          "type": "boolean",
+          "required": true,
+          "owner": "pg",
+          "description": "La plateforme peut-elle servir de source de campagne dans la version courante ?"
+        },
+        {
+          "name": "campaign_allowed_until",
+          "type": "date",
+          "required": false,
+          "owner": "pg",
+          "description": "Date limite de campagne, par exemple 2026-12-31 pour Telegram et YouTube."
+        },
+        {
+          "name": "campaign_note",
+          "type": "long_text",
+          "required": false,
+          "owner": "pg",
+          "description": "Contrainte de calendrier ou de périmètre."
+        },
+        {
+          "name": "source",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Source de la donnée de couverture."
+        },
+        {
+          "name": "source_date",
+          "type": "date",
+          "required": true,
+          "owner": "pg",
+          "description": "Date de la source."
+        },
+        {
+          "name": "checked_at",
+          "type": "date",
+          "required": true,
+          "owner": "pg",
+          "description": "Date du dernier contrôle."
+        },
+        {
+          "name": "version",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Version du référentiel plateformes."
+        },
+        {
+          "name": "created_at",
+          "type": "created_on",
+          "required": false,
+          "owner": "derived"
+        },
+        {
+          "name": "updated_at",
+          "type": "last_modified_on",
+          "required": false,
+          "owner": "derived"
+        }
+      ]
+    },
+    {
+      "name": "Createurs",
+      "description": "Une ligne par créateur, pas par compte. Les comptes sont dans Profils_plateforme.",
+      "primary_field": "display_name",
+      "fields": [
+        {
+          "name": "display_name",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "owner": "pg",
+          "description": "Nom affiché du créateur."
+        },
+        {
+          "name": "reference",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Référence stable CR-000001."
+        },
+        {
+          "name": "record_id",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "UUID PostgreSQL de la fiche ; clef de synchronisation."
+        },
+        {
+          "name": "workflow_status",
+          "type": "single_select",
+          "required": true,
+          "owner": "pg",
+          "options": [
+            "NEW",
+            "IDENTIFIED",
+            "DUPLICATE",
+            "ENRICHED",
+            "TO_REVIEW",
+            "SCORED",
+            "PRESELECTED",
+            "AUDIT",
+            "POOL",
+            "QUALIFIED",
+            "APPROVED",
+            "CONTACTED",
+            "REPLIED",
+            "MEETING",
+            "CLIENT",
+            "OPT_OUT",
+            "REJECTED",
+            "COMPLIANCE_REVIEW",
+            "MANUAL_REVIEW",
+            "INELIGIBLE"
+          ],
+          "description": "Statut de parcours. Écrit par PostgreSQL, jamais saisi directement."
+        },
+        {
+          "name": "eligibility_status",
+          "type": "single_select",
+          "required": false,
+          "owner": "pg",
+          "options": ["ELIGIBLE", "INELIGIBLE", "REGULATORY_PENDING", "EXCEPTION_APPROVED"],
+          "description": "Éligibilité réglementaire. Vide tant qu'elle n'est pas décidée."
+        },
+        {
+          "name": "score",
+          "type": "number",
+          "number_decimal_places": 0,
+          "required": false,
+          "owner": "pg",
+          "description": "Score entier sur 100, tronqué une seule fois. Le total exact est dans score_total_exact."
+        },
+        {
+          "name": "score_total_exact",
+          "type": "text",
+          "required": false,
+          "owner": "pg",
+          "description": "Total exact avant troncature, conservé en texte (par exemple 79.875 ou 75/4)."
+        },
+        {
+          "name": "score_incomplete",
+          "type": "boolean",
+          "required": false,
+          "owner": "pg",
+          "description": "Score incomplet : au moins une mesure est inconnue (S-03)."
+        },
+        {
+          "name": "score_proposal",
+          "type": "single_select",
+          "required": false,
+          "owner": "pg",
+          "options": ["PRESELECTED", "REJECTED", "TO_REVIEW", "QUALIFIED"],
+          "description": "Proposition issue du score, avant éligibilité et décision humaine."
+        },
+        {
+          "name": "score_bounds_lower",
+          "type": "text",
+          "required": false,
+          "owner": "pg",
+          "description": "Borne basse du score quand une mesure manque (S-03)."
+        },
+        {
+          "name": "score_bounds_upper",
+          "type": "text",
+          "required": false,
+          "owner": "pg",
+          "description": "Borne haute du score quand une mesure manque (S-03)."
+        },
+        {
+          "name": "criteria_version",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Version des critères du dernier classement."
+        },
+        {
+          "name": "assigned_to",
+          "type": "text",
+          "required": false,
+          "owner": "baserow",
+          "description": "Analyste responsable de la fiche (adresse e-mail)."
+        },
+        {
+          "name": "tags",
+          "type": "multiple_select",
+          "required": false,
+          "owner": "baserow",
+          "options": [
+            "PRIORITY",
+            "VIP",
+            "DOUBT",
+            "NEEDS_FOLLOWUP",
+            "ESPORTS",
+            "GAMING_HARDWARE",
+            "BETTING",
+            "AGENCY",
+            "EXISTING_CLIENT",
+            "BLACKLIST"
+          ],
+          "description": "Étiquettes de travail."
+        },
+        {
+          "name": "notes",
+          "type": "long_text",
+          "required": false,
+          "owner": "baserow",
+          "description": "Notes de travail, jamais une preuve."
+        },
+        {
+          "name": "review_action",
+          "type": "single_select",
+          "required": false,
+          "owner": "baserow",
+          "options": [
+            "NONE",
+            "REQUEST_REVIEW",
+            "APPROVE",
+            "REJECT",
+            "COMPLIANCE_REVIEW",
+            "START_AUDIT",
+            "ADD_TO_POOL",
+            "MARK_CONTACTED",
+            "RECORD_OPT_OUT"
+          ],
+          "description": "Action demandée par un humain. PostgreSQL valide la transition et écrit le journal."
+        },
+        {
+          "name": "review_action_note",
+          "type": "long_text",
+          "required": false,
+          "owner": "baserow",
+          "description": "Justification de l'action, en une ou deux phrases (Q-01)."
+        },
+        {
+          "name": "review_action_at",
+          "type": "date_time",
+          "required": false,
+          "owner": "baserow",
+          "description": "Date de la demande."
+        },
+        {
+          "name": "review_action_processed",
+          "type": "boolean",
+          "required": false,
+          "owner": "pg",
+          "description": "L'action a-t-elle été appliquée par PostgreSQL ?"
+        },
+        {
+          "name": "main_platform",
+          "type": "link_row",
+          "link_row_table": "Plateformes",
+          "multiple": false,
+          "required": true,
+          "owner": "pg",
+          "description": "Plateforme principale du créateur."
+        },
+        {
+          "name": "handle",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Pseudonyme normalisé sur la plateforme principale."
+        },
+        {
+          "name": "platform_url",
+          "type": "url",
+          "required": true,
+          "owner": "pg",
+          "description": "URL normalisée de la page principale."
+        },
+        {
+          "name": "platform_account_id",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Identifiant technique stable, si disponible. Peut rester vide quand la plateforme n'en expose pas (verification.md §2.5)."
+        },
+        {
+          "name": "platform_username",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Nom d'utilisateur affiché ; attribut modifiable, jamais une clef."
+        },
+        {
+          "name": "platform_coverage_status",
+          "type": "single_select",
+          "required": true,
+          "owner": "pg",
+          "options": ["COVERED", "NOT_COVERED", "UNKNOWN"],
+          "description": "Couverture RKN de la plateforme pour cette fiche."
+        },
+        {
+          "name": "coverage_checked_at",
+          "type": "date_time",
+          "required": true,
+          "owner": "pg",
+          "description": "Date du dernier contrôle de couverture."
+        },
+        {
+          "name": "followers",
+          "type": "number",
+          "required": true,
+          "owner": "pg",
+          "description": "Abonnés sur la plateforme principale."
+        },
+        {
+          "name": "followers_read_at",
+          "type": "date_time",
+          "required": true,
+          "owner": "pg",
+          "description": "Date de lecture du nombre d'abonnés."
+        },
+        {
+          "name": "average_views",
+          "type": "number",
+          "required": true,
+          "owner": "pg",
+          "description": "Vues moyennes sur la fenêtre documentée (C-03)."
+        },
+        {
+          "name": "average_concurrent_viewers",
+          "type": "number",
+          "required": false,
+          "owner": "pg",
+          "description": "Spectateurs simultanés moyens, pertinent pour Twitch."
+        },
+        {
+          "name": "published_last_30_days",
+          "type": "number",
+          "required": true,
+          "owner": "pg",
+          "description": "Publications ou streams sur les 30 derniers jours."
+        },
+        {
+          "name": "last_published_at",
+          "type": "date_time",
+          "required": true,
+          "owner": "pg",
+          "description": "Date de la dernière publication observée."
+        },
+        {
+          "name": "profiles",
+          "type": "link_row",
+          "link_row_table": "Profils_plateforme",
+          "multiple": true,
+          "required": false,
+          "owner": "pg",
+          "description": "Tous les comptes connus du créateur."
+        },
+        {
+          "name": "other_profiles",
+          "type": "long_text",
+          "required": false,
+          "owner": "pg",
+          "description": "URL des profils secondaires, une par ligne."
+        },
+        {
+          "name": "country",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Pays du créateur, code ISO 3166-1 alpha-2."
+        },
+        {
+          "name": "content_language",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Langue principale du contenu, code ISO 639-1."
+        },
+        {
+          "name": "gaming_share",
+          "type": "number",
+          "number_decimal_places": 2,
+          "required": true,
+          "owner": "pg",
+          "description": "Part de contenu gaming sur les 30 dernières publications, en pourcentage."
+        },
+        {
+          "name": "rkn_registry_url",
+          "type": "url",
+          "required": true,
+          "owner": "pg",
+          "description": "Lien vers l'inscription au registre RKN, tel que publié par le créateur."
+        },
+        {
+          "name": "rkn_search_status",
+          "type": "single_select",
+          "required": true,
+          "owner": "pg",
+          "options": ["FOUND", "NOT_FOUND", "SEARCH_UNAVAILABLE", "MANUAL_REVIEW"],
+          "description": "Résultat de la recherche indépendante dans le registre."
+        },
+        {
+          "name": "rkn_search_query",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Requête exacte utilisée dans le registre."
+        },
+        {
+          "name": "rkn_registry_status",
+          "type": "single_select",
+          "required": true,
+          "owner": "pg",
+          "options": ["VERIFIED", "PARTIAL", "PENDING", "MISMATCH", "NOT_FOUND", "NOT_APPLICABLE", "MANUAL_REVIEW"],
+          "description": "Statut de vérification du rattachement au registre."
+        },
+        {
+          "name": "registry_domain_ok",
+          "type": "boolean",
+          "required": true,
+          "owner": "pg",
+          "description": "Le domaine de la page figure-t-il dans la source officielle ?"
+        },
+        {
+          "name": "registry_url_match",
+          "type": "boolean",
+          "required": true,
+          "owner": "pg",
+          "description": "L'URL de la page correspond-elle exactement à l'inscription ?"
+        },
+        {
+          "name": "a_plus_badge",
+          "type": "boolean",
+          "required": true,
+          "owner": "pg",
+          "description": "Badge A+ observé sur la page."
+        },
+        {
+          "name": "creator_control_verified",
+          "type": "boolean",
+          "required": true,
+          "owner": "pg",
+          "description": "Le contrôle du compte a-t-il été effectué quand il fallait aller plus loin ?"
+        },
+        {
+          "name": "foreign_agent_label",
+          "type": "boolean",
+          "required": true,
+          "owner": "pg",
+          "description": "Étiquette d'agent étranger présente (critère éliminatoire X-02)."
+        },
+        {
+          "name": "ad_contact_or_rate_card",
+          "type": "boolean",
+          "required": true,
+          "owner": "pg",
+          "description": "Contact publicitaire ou grille tarifaire publiée."
+        },
+        {
+          "name": "past_labeled_ads",
+          "type": "boolean",
+          "required": true,
+          "owner": "pg",
+          "description": "Publicités étiquetées passées observées."
+        },
+        {
+          "name": "platform_risk",
+          "type": "lookup",
+          "through_field": "main_platform",
+          "target_field": "risk_level",
+          "required": false,
+          "owner": "derived",
+          "description": "Risque de la plateforme principale, lu dans Plateformes."
+        },
+        {
+          "name": "platform_campaign_allowed_until",
+          "type": "lookup",
+          "through_field": "main_platform",
+          "target_field": "campaign_allowed_until",
+          "required": false,
+          "owner": "derived",
+          "description": "Date limite de campagne de la plateforme principale."
+        },
+        {
+          "name": "verification_date",
+          "type": "date",
+          "required": true,
+          "owner": "pg",
+          "description": "Date de la dernière vérification réglementaire."
+        },
+        {
+          "name": "verification_evidence",
+          "type": "long_text",
+          "required": true,
+          "owner": "pg",
+          "description": "De quoi refaire le contrôle : adresse, requête, date, empreinte (V-23)."
+        },
+        {
+          "name": "verification_evidence_url",
+          "type": "url",
+          "required": false,
+          "owner": "pg",
+          "description": "Lien vers le snapshot de preuve conservé côté PostgreSQL."
+        },
+        {
+          "name": "contact_channel",
+          "type": "single_select",
+          "required": true,
+          "owner": "pg",
+          "options": ["EMAIL", "TELEGRAM", "VK", "FORM", "PHONE", "OTHER"],
+          "description": "Canal professionnel public retenu en priorité."
+        },
+        {
+          "name": "source_refs",
+          "type": "long_text",
+          "required": true,
+          "owner": "pg",
+          "description": "Sources de la fiche, une URL datée par ligne."
+        },
+        {
+          "name": "media_kit_url",
+          "type": "url",
+          "required": false,
+          "owner": "pg",
+          "description": "Media kit publié, si présent."
+        },
+        {
+          "name": "agency",
+          "type": "text",
+          "required": false,
+          "owner": "pg",
+          "description": "Agence déclarée par le créateur."
+        },
+        {
+          "name": "audience_geography",
+          "type": "text",
+          "required": false,
+          "owner": "pg",
+          "description": "Géographie de l'audience, si une source la documente."
+        },
+        {
+          "name": "audit_notes",
+          "type": "long_text",
+          "required": false,
+          "owner": "baserow",
+          "description": "Notes de l'audit ProveItGo."
+        },
+        {
+          "name": "last_contact_at",
+          "type": "date_time",
+          "required": false,
+          "owner": "pg",
+          "description": "Dernier contact enregistré."
+        },
+        {
+          "name": "next_action_at",
+          "type": "date",
+          "required": false,
+          "owner": "baserow",
+          "description": "Prochaine action de travail."
+        },
+        {
+          "name": "ads_count_90d",
+          "type": "number",
+          "required": false,
+          "owner": "pg",
+          "description": "Publicités étiquetées liées au créateur sur 90 jours."
+        },
+        {
+          "name": "last_ad_at",
+          "type": "date_time",
+          "required": false,
+          "owner": "pg",
+          "description": "Date de la dernière publicité liée."
+        },
+        {
+          "name": "contacts",
+          "type": "link_row",
+          "link_row_table": "Contacts",
+          "multiple": true,
+          "required": false,
+          "owner": "pg",
+          "description": "Contacts professionnels publics."
+        },
+        {
+          "name": "publicites",
+          "type": "link_row",
+          "link_row_table": "Publicites_etiquetees",
+          "multiple": true,
+          "required": false,
+          "owner": "pg",
+          "description": "Publicités où le créateur est visible."
+        },
+        {
+          "name": "preuves",
+          "type": "link_row",
+          "link_row_table": "Preuves",
+          "multiple": true,
+          "required": false,
+          "owner": "pg",
+          "description": "Faits et preuves de la fiche."
+        },
+        {
+          "name": "decisions",
+          "type": "link_row",
+          "link_row_table": "Decisions",
+          "multiple": true,
+          "required": false,
+          "owner": "pg",
+          "description": "Journal des décisions."
+        },
+        {
+          "name": "merged_into",
+          "type": "link_row",
+          "link_row_table": "Createurs",
+          "multiple": false,
+          "required": false,
+          "owner": "pg",
+          "description": "Fiche canonique si celle-ci a été absorbée."
+        },
+        {
+          "name": "merged_at",
+          "type": "date_time",
+          "required": false,
+          "owner": "pg",
+          "description": "Date de la fusion."
+        },
+        {
+          "name": "sync_status",
+          "type": "single_select",
+          "required": false,
+          "owner": "pg",
+          "options": ["PENDING", "SYNCED", "REJECTED", "ERROR"],
+          "description": "État de la synchronisation avec PostgreSQL."
+        },
+        {
+          "name": "sync_error",
+          "type": "long_text",
+          "required": false,
+          "owner": "pg",
+          "description": "Dernière erreur de synchronisation, lisible par un humain."
+        },
+        {
+          "name": "last_synced_at",
+          "type": "date_time",
+          "required": false,
+          "owner": "pg",
+          "description": "Date de la dernière synchronisation réussie."
+        },
+        {
+          "name": "created_at",
+          "type": "created_on",
+          "required": false,
+          "owner": "derived"
+        },
+        {
+          "name": "updated_at",
+          "type": "last_modified_on",
+          "required": false,
+          "owner": "derived"
+        }
+      ]
+    },
+    {
+      "name": "Acheteurs",
+      "description": "Une ligne par personne morale acheteuse, identifiée par INN/OGRN ou repli documenté.",
+      "primary_field": "legal_name",
+      "fields": [
+        {
+          "name": "legal_name",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "owner": "pg",
+          "description": "Nom juridique tel que constaté."
+        },
+        {
+          "name": "reference",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Référence stable BY-000001."
+        },
+        {
+          "name": "record_id",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "UUID PostgreSQL de la fiche ; clef de synchronisation."
+        },
+        {
+          "name": "workflow_status",
+          "type": "single_select",
+          "required": true,
+          "owner": "pg",
+          "options": [
+            "NEW",
+            "IDENTIFIED",
+            "DUPLICATE",
+            "ENRICHED",
+            "TO_REVIEW",
+            "SCORED",
+            "PRESELECTED",
+            "AUDIT",
+            "POOL",
+            "QUALIFIED",
+            "APPROVED",
+            "CONTACTED",
+            "REPLIED",
+            "MEETING",
+            "CLIENT",
+            "OPT_OUT",
+            "REJECTED",
+            "COMPLIANCE_REVIEW",
+            "MANUAL_REVIEW",
+            "INELIGIBLE"
+          ],
+          "description": "Statut de parcours. Écrit par PostgreSQL."
+        },
+        {
+          "name": "eligibility_status",
+          "type": "single_select",
+          "required": false,
+          "owner": "pg",
+          "options": ["ELIGIBLE", "INELIGIBLE", "REGULATORY_PENDING", "EXCEPTION_APPROVED"],
+          "description": "Éligibilité réglementaire. Vide tant qu'elle n'est pas décidée."
+        },
+        {
+          "name": "score",
+          "type": "number",
+          "number_decimal_places": 0,
+          "required": false,
+          "owner": "pg",
+          "description": "Score entier sur 100. Le total exact est dans score_total_exact."
+        },
+        {
+          "name": "score_total_exact",
+          "type": "text",
+          "required": false,
+          "owner": "pg",
+          "description": "Total exact avant troncature, conservé en texte."
+        },
+        {
+          "name": "score_incomplete",
+          "type": "boolean",
+          "required": false,
+          "owner": "pg",
+          "description": "Score incomplet : au moins une mesure est inconnue (S-03)."
+        },
+        {
+          "name": "score_proposal",
+          "type": "single_select",
+          "required": false,
+          "owner": "pg",
+          "options": ["PRESELECTED", "REJECTED", "TO_REVIEW", "QUALIFIED"],
+          "description": "Proposition issue du score, avant éligibilité et décision humaine."
+        },
+        {
+          "name": "score_bounds_lower",
+          "type": "text",
+          "required": false,
+          "owner": "pg",
+          "description": "Borne basse du score quand une mesure manque (S-03)."
+        },
+        {
+          "name": "score_bounds_upper",
+          "type": "text",
+          "required": false,
+          "owner": "pg",
+          "description": "Borne haute du score quand une mesure manque (S-03)."
+        },
+        {
+          "name": "criteria_version",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Version des critères du dernier classement."
+        },
+        {
+          "name": "assigned_to",
+          "type": "text",
+          "required": false,
+          "owner": "baserow",
+          "description": "Analyste responsable de la fiche."
+        },
+        {
+          "name": "tags",
+          "type": "multiple_select",
+          "required": false,
+          "owner": "baserow",
+          "options": [
+            "PRIORITY",
+            "VIP",
+            "DOUBT",
+            "NEEDS_FOLLOWUP",
+            "ESPORTS",
+            "GAMING_HARDWARE",
+            "BETTING",
+            "AGENCY",
+            "EXISTING_CLIENT",
+            "BLACKLIST"
+          ],
+          "description": "Étiquettes de travail."
+        },
+        {
+          "name": "notes",
+          "type": "long_text",
+          "required": false,
+          "owner": "baserow",
+          "description": "Notes de travail, jamais une preuve."
+        },
+        {
+          "name": "review_action",
+          "type": "single_select",
+          "required": false,
+          "owner": "baserow",
+          "options": [
+            "NONE",
+            "REQUEST_REVIEW",
+            "APPROVE",
+            "REJECT",
+            "COMPLIANCE_REVIEW",
+            "START_AUDIT",
+            "ADD_TO_POOL",
+            "MARK_CONTACTED",
+            "RECORD_OPT_OUT"
+          ],
+          "description": "Action demandée par un humain, validée par PostgreSQL."
+        },
+        {
+          "name": "review_action_note",
+          "type": "long_text",
+          "required": false,
+          "owner": "baserow",
+          "description": "Justification de l'action."
+        },
+        {
+          "name": "review_action_at",
+          "type": "date_time",
+          "required": false,
+          "owner": "baserow",
+          "description": "Date de la demande."
+        },
+        {
+          "name": "review_action_processed",
+          "type": "boolean",
+          "required": false,
+          "owner": "pg",
+          "description": "L'action a-t-elle été appliquée ?"
+        },
+        {
+          "name": "legal_form",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Forme juridique (ООО, АО, ИП, etc.)."
+        },
+        {
+          "name": "inn",
+          "type": "text",
+          "required": false,
+          "owner": "pg",
+          "description": "INN brut validé par somme de contrôle. Obligatoire si OGRN absent."
+        },
+        {
+          "name": "ogrn",
+          "type": "text",
+          "required": false,
+          "owner": "pg",
+          "description": "OGRN brut validé par somme de contrôle. Obligatoire si INN absent."
+        },
+        {
+          "name": "tax_id",
+          "type": "text",
+          "required": false,
+          "owner": "pg",
+          "description": "Identifiant fiscal local hors Russie (BIN, UNP, VÖEN)."
+        },
+        {
+          "name": "tax_id_type",
+          "type": "single_select",
+          "required": false,
+          "owner": "pg",
+          "options": ["INN", "OGRN", "OGRNIP", "BIN", "UNP", "VOEN", "OTHER"],
+          "description": "Type de tax_id."
+        },
+        {
+          "name": "registry_status",
+          "type": "single_select",
+          "required": true,
+          "owner": "pg",
+          "options": ["ACTIVE", "LIQUIDATED", "REORGANIZED", "SUSPENDED", "UNKNOWN"],
+          "description": "Statut au registre des entreprises."
+        },
+        {
+          "name": "activity_code",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Code d'activité principal (OKVED ou équivalent local)."
+        },
+        {
+          "name": "country_of_incorporation",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Pays d'immatriculation, code ISO 3166-1 alpha-2."
+        },
+        {
+          "name": "region",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Région d'immatriculation."
+        },
+        {
+          "name": "website",
+          "type": "url",
+          "required": true,
+          "owner": "pg",
+          "description": "Site web de l'entreprise."
+        },
+        {
+          "name": "official_domain",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Domaine officiel vérifié, sans www ni barre finale."
+        },
+        {
+          "name": "domain_match",
+          "type": "boolean",
+          "required": true,
+          "owner": "pg",
+          "description": "Le domaine figure-t-il exactement dans la source officielle ?"
+        },
+        {
+          "name": "domain_source_date",
+          "type": "date",
+          "required": true,
+          "owner": "pg",
+          "description": "Date de la source qui atteste le domaine (V-15)."
+        },
+        {
+          "name": "sells_to_gamers_evidence",
+          "type": "long_text",
+          "required": true,
+          "owner": "pg",
+          "description": "Preuve observée que l'entreprise vend aux joueurs."
+        },
+        {
+          "name": "labeled_ads_last_90_days",
+          "type": "number",
+          "required": true,
+          "owner": "pg",
+          "description": "Intégrations gaming étiquetées sur 90 jours, recalculées depuis Publicites_etiquetees."
+        },
+        {
+          "name": "ad_label_refs",
+          "type": "long_text",
+          "required": true,
+          "owner": "pg",
+          "description": "Références des étiquettes : source, date, erid. Une par ligne."
+        },
+        {
+          "name": "sanctions_checked_at",
+          "type": "date",
+          "required": true,
+          "owner": "pg",
+          "description": "Date du dernier contrôle OFAC/UE/UK."
+        },
+        {
+          "name": "employee_band",
+          "type": "single_select",
+          "required": true,
+          "owner": "pg",
+          "options": ["0-19", "20-49", "50-199", "200-999", "1000+", "UNKNOWN"],
+          "description": "Tranche d'effectif observée, jamais devinée (B-02)."
+        },
+        {
+          "name": "decision_maker_role",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Rôle du décideur visé."
+        },
+        {
+          "name": "decision_maker_email_verified",
+          "type": "boolean",
+          "required": true,
+          "owner": "pg",
+          "description": "Une adresse e-mail de rôle a-t-elle été vérifiée ?"
+        },
+        {
+          "name": "timing_signal",
+          "type": "long_text",
+          "required": true,
+          "owner": "pg",
+          "description": "Lancement, tournoi ou embauche récente, avec sa source."
+        },
+        {
+          "name": "license_authority",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Autorité de licence du pays d'enregistrement."
+        },
+        {
+          "name": "license_number",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Numéro exact de licence."
+        },
+        {
+          "name": "license_status",
+          "type": "single_select",
+          "required": true,
+          "owner": "pg",
+          "options": ["ACTIVE", "SUSPENDED", "REVOKED", "CANCELLED", "MODIFIED", "NOT_APPLICABLE", "UNKNOWN"],
+          "description": "Statut actuel de la licence. NOT_APPLICABLE si l'entreprise n'exerce pas d'activité de paris."
+        },
+        {
+          "name": "licensed_activity",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Activité autorisée par la licence."
+        },
+        {
+          "name": "license_country",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Pays qui a délivré la licence."
+        },
+        {
+          "name": "campaign_country",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Marché visé par la campagne."
+        },
+        {
+          "name": "license_registry_url",
+          "type": "url",
+          "required": true,
+          "owner": "pg",
+          "description": "Adresse du registre consulté."
+        },
+        {
+          "name": "license_checked_at",
+          "type": "date",
+          "required": true,
+          "owner": "pg",
+          "description": "Date du dernier contrôle de licence."
+        },
+        {
+          "name": "verification_date",
+          "type": "date",
+          "required": true,
+          "owner": "pg",
+          "description": "Date de la dernière vérification réglementaire."
+        },
+        {
+          "name": "verification_evidence",
+          "type": "long_text",
+          "required": true,
+          "owner": "pg",
+          "description": "De quoi refaire le contrôle : registre, requête, date, empreinte."
+        },
+        {
+          "name": "verification_evidence_url",
+          "type": "url",
+          "required": false,
+          "owner": "pg",
+          "description": "Lien vers le snapshot de preuve conservé côté PostgreSQL."
+        },
+        {
+          "name": "contact_channel",
+          "type": "single_select",
+          "required": true,
+          "owner": "pg",
+          "options": ["EMAIL", "TELEGRAM", "VK", "FORM", "PHONE", "OTHER"],
+          "description": "Canal professionnel public retenu en priorité."
+        },
+        {
+          "name": "source_refs",
+          "type": "long_text",
+          "required": true,
+          "owner": "pg",
+          "description": "Sources de la fiche, une URL datée par ligne."
+        },
+        {
+          "name": "agency",
+          "type": "text",
+          "required": false,
+          "owner": "pg",
+          "description": "Agence ou représentant, si déclaré."
+        },
+        {
+          "name": "revenue_band",
+          "type": "text",
+          "required": false,
+          "owner": "pg",
+          "description": "Tranche de chiffre d'affaires, si sourcée."
+        },
+        {
+          "name": "competitors",
+          "type": "text",
+          "required": false,
+          "owner": "pg",
+          "description": "Concurrents connus, si utile à la campagne."
+        },
+        {
+          "name": "language_of_site",
+          "type": "text",
+          "required": false,
+          "owner": "pg",
+          "description": "Langue principale du site."
+        },
+        {
+          "name": "betting_license_ref",
+          "type": "text",
+          "required": false,
+          "owner": "pg",
+          "description": "Référence de licence de paris, si applicable."
+        },
+        {
+          "name": "contacts",
+          "type": "link_row",
+          "link_row_table": "Contacts",
+          "multiple": true,
+          "required": false,
+          "owner": "pg",
+          "description": "Contacts professionnels publics."
+        },
+        {
+          "name": "publicites",
+          "type": "link_row",
+          "link_row_table": "Publicites_etiquetees",
+          "multiple": true,
+          "required": false,
+          "owner": "pg",
+          "description": "Publicités étiquetées de l'annonceur."
+        },
+        {
+          "name": "preuves",
+          "type": "link_row",
+          "link_row_table": "Preuves",
+          "multiple": true,
+          "required": false,
+          "owner": "pg",
+          "description": "Faits et preuves de la fiche."
+        },
+        {
+          "name": "decisions",
+          "type": "link_row",
+          "link_row_table": "Decisions",
+          "multiple": true,
+          "required": false,
+          "owner": "pg",
+          "description": "Journal des décisions."
+        },
+        {
+          "name": "merged_into",
+          "type": "link_row",
+          "link_row_table": "Acheteurs",
+          "multiple": false,
+          "required": false,
+          "owner": "pg",
+          "description": "Fiche canonique si celle-ci a été absorbée."
+        },
+        {
+          "name": "merged_at",
+          "type": "date_time",
+          "required": false,
+          "owner": "pg",
+          "description": "Date de la fusion."
+        },
+        {
+          "name": "sync_status",
+          "type": "single_select",
+          "required": false,
+          "owner": "pg",
+          "options": ["PENDING", "SYNCED", "REJECTED", "ERROR"],
+          "description": "État de la synchronisation avec PostgreSQL."
+        },
+        {
+          "name": "sync_error",
+          "type": "long_text",
+          "required": false,
+          "owner": "pg",
+          "description": "Dernière erreur de synchronisation, lisible par un humain."
+        },
+        {
+          "name": "last_synced_at",
+          "type": "date_time",
+          "required": false,
+          "owner": "pg",
+          "description": "Date de la dernière synchronisation réussie."
+        },
+        {
+          "name": "created_at",
+          "type": "created_on",
+          "required": false,
+          "owner": "derived"
+        },
+        {
+          "name": "updated_at",
+          "type": "last_modified_on",
+          "required": false,
+          "owner": "derived"
+        }
+      ]
+    },
+    {
+      "name": "Profils_plateforme",
+      "description": "Un compte de créateur sur une plateforme. Un créateur peut en avoir plusieurs.",
+      "primary_field": "handle",
+      "fields": [
+        {
+          "name": "handle",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "owner": "pg",
+          "description": "Pseudonyme normalisé sur la plateforme."
+        },
+        {
+          "name": "profile_id",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "UUID PostgreSQL du profil."
+        },
+        {
+          "name": "creator",
+          "type": "link_row",
+          "link_row_table": "Createurs",
+          "multiple": false,
+          "required": true,
+          "owner": "pg",
+          "description": "Créateur auquel ce compte appartient."
+        },
+        {
+          "name": "platform",
+          "type": "link_row",
+          "link_row_table": "Plateformes",
+          "multiple": false,
+          "required": true,
+          "owner": "pg",
+          "description": "Plateforme du compte."
+        },
+        {
+          "name": "platform_url",
+          "type": "url",
+          "required": true,
+          "owner": "pg",
+          "description": "URL normalisée du compte."
+        },
+        {
+          "name": "platform_account_id",
+          "type": "text",
+          "required": false,
+          "owner": "pg",
+          "description": "Identifiant technique stable, si disponible."
+        },
+        {
+          "name": "platform_username",
+          "type": "text",
+          "required": false,
+          "owner": "pg",
+          "description": "Nom affiché, modifiable."
+        },
+        {
+          "name": "is_primary",
+          "type": "boolean",
+          "required": true,
+          "owner": "pg",
+          "description": "Profil principal dont les métriques remontent sur la fiche."
+        },
+        {
+          "name": "coverage_status",
+          "type": "single_select",
+          "required": true,
+          "owner": "pg",
+          "options": ["COVERED", "NOT_COVERED", "UNKNOWN"],
+          "description": "Couverture RKN de cette plateforme."
+        },
+        {
+          "name": "coverage_checked_at",
+          "type": "date_time",
+          "required": false,
+          "owner": "pg",
+          "description": "Date du dernier contrôle de couverture."
+        },
+        {
+          "name": "followers",
+          "type": "number",
+          "required": false,
+          "owner": "pg",
+          "description": "Abonnés sur ce compte."
+        },
+        {
+          "name": "followers_read_at",
+          "type": "date_time",
+          "required": false,
+          "owner": "pg",
+          "description": "Date de lecture des abonnés."
+        },
+        {
+          "name": "average_views",
+          "type": "number",
+          "required": false,
+          "owner": "pg",
+          "description": "Vues moyennes sur la fenêtre documentée."
+        },
+        {
+          "name": "average_concurrent_viewers",
+          "type": "number",
+          "required": false,
+          "owner": "pg",
+          "description": "Spectateurs simultanés moyens."
+        },
+        {
+          "name": "published_last_30_days",
+          "type": "number",
+          "required": false,
+          "owner": "pg",
+          "description": "Publications ou streams sur 30 jours."
+        },
+        {
+          "name": "last_published_at",
+          "type": "date_time",
+          "required": false,
+          "owner": "pg",
+          "description": "Date de la dernière publication."
+        },
+        {
+          "name": "created_at",
+          "type": "created_on",
+          "required": false,
+          "owner": "derived"
+        },
+        {
+          "name": "updated_at",
+          "type": "last_modified_on",
+          "required": false,
+          "owner": "derived"
+        }
+      ]
+    },
+    {
+      "name": "Contacts",
+      "description": "Contacts professionnels et publics uniquement. Un opt-out est immédiat et définitif.",
+      "primary_field": "channel_value",
+      "fields": [
+        {
+          "name": "channel_value",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "owner": "baserow",
+          "description": "Adresse, pseudonyme ou URL de contact."
+        },
+        {
+          "name": "contact_id",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "UUID PostgreSQL du contact."
+        },
+        {
+          "name": "record_type",
+          "type": "single_select",
+          "required": true,
+          "owner": "baserow",
+          "options": ["CREATOR", "BUYER"],
+          "description": "Nature de la fiche liée."
+        },
+        {
+          "name": "creator",
+          "type": "link_row",
+          "link_row_table": "Createurs",
+          "multiple": false,
+          "required": false,
+          "owner": "baserow",
+          "description": "Créateur concerné."
+        },
+        {
+          "name": "acheteur",
+          "type": "link_row",
+          "link_row_table": "Acheteurs",
+          "multiple": false,
+          "required": false,
+          "owner": "baserow",
+          "description": "Acheteur concerné."
+        },
+        {
+          "name": "record_reference",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Référence CR-... ou BY-... de la fiche liée."
+        },
+        {
+          "name": "role",
+          "type": "single_select",
+          "required": true,
+          "owner": "baserow",
+          "options": [
+            "ADVERTISING_CONTACT",
+            "AGENCY",
+            "MARKETING",
+            "INFLUENCE_PARTNERSHIPS",
+            "BRAND",
+            "FOUNDER",
+            "OTHER"
+          ],
+          "description": "Rôle connu. Un contact sans rôle n'est pas utile (K-01)."
+        },
+        {
+          "name": "person_name",
+          "type": "text",
+          "required": false,
+          "owner": "baserow",
+          "description": "Nom de la personne, uniquement s'il est public et professionnel."
+        },
+        {
+          "name": "channel_type",
+          "type": "single_select",
+          "required": true,
+          "owner": "baserow",
+          "options": ["EMAIL", "TELEGRAM", "VK", "FORM", "PHONE", "OTHER"],
+          "description": "Type de canal."
+        },
+        {
+          "name": "is_professional_public",
+          "type": "boolean",
+          "required": true,
+          "owner": "baserow",
+          "description": "Le contact est-il professionnel et public ?"
+        },
+        {
+          "name": "source_url",
+          "type": "url",
+          "required": true,
+          "owner": "baserow",
+          "description": "Où le contact a été publié (K-02)."
+        },
+        {
+          "name": "source_date",
+          "type": "date",
+          "required": true,
+          "owner": "baserow",
+          "description": "Date de publication ou de consultation."
+        },
+        {
+          "name": "verification_status",
+          "type": "single_select",
+          "required": false,
+          "owner": "pg",
+          "options": ["VERIFIED", "PARTIAL", "PENDING", "MISMATCH", "NOT_FOUND", "NOT_APPLICABLE", "MANUAL_REVIEW"],
+          "description": "Rattachement du contact à la fiche."
+        },
+        {
+          "name": "status",
+          "type": "single_select",
+          "required": true,
+          "owner": "baserow",
+          "options": ["ACTIVE", "VERIFIED", "OPT_OUT", "BLOCKED"],
+          "description": "Statut du contact. OPT_OUT est immédiat et définitif (K-03)."
+        },
+        {
+          "name": "verified_at",
+          "type": "date_time",
+          "required": false,
+          "owner": "pg",
+          "description": "Date de vérification."
+        },
+        {
+          "name": "last_contacted_at",
+          "type": "date_time",
+          "required": false,
+          "owner": "pg",
+          "description": "Dernier contact enregistré."
+        },
+        {
+          "name": "notes",
+          "type": "long_text",
+          "required": false,
+          "owner": "baserow",
+          "description": "Notes de travail."
+        },
+        {
+          "name": "sync_status",
+          "type": "single_select",
+          "required": false,
+          "owner": "pg",
+          "options": ["PENDING", "SYNCED", "REJECTED", "ERROR"],
+          "description": "État de la synchronisation."
+        },
+        {
+          "name": "sync_error",
+          "type": "long_text",
+          "required": false,
+          "owner": "pg",
+          "description": "Dernière erreur de synchronisation."
+        },
+        {
+          "name": "last_synced_at",
+          "type": "date_time",
+          "required": false,
+          "owner": "pg",
+          "description": "Date de la dernière synchronisation réussie."
+        },
+        {
+          "name": "created_at",
+          "type": "created_on",
+          "required": false,
+          "owner": "derived"
+        },
+        {
+          "name": "updated_at",
+          "type": "last_modified_on",
+          "required": false,
+          "owner": "derived"
+        }
+      ]
+    },
+    {
+      "name": "Publicites_etiquetees",
+      "description": "Une ligne par publicité collectée, avec l'étiquette brute. Saisie dans Baserow, canonicalisée dans PostgreSQL.",
+      "primary_field": "advertiser_raw",
+      "fields": [
+        {
+          "name": "advertiser_raw",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "owner": "baserow",
+          "description": "Nom d'annonceur tel qu'affiché, sans normalisation."
+        },
+        {
+          "name": "ad_id",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "UUID PostgreSQL de la publicité."
+        },
+        {
+          "name": "reference",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Référence stable AD-000001."
+        },
+        {
+          "name": "ad_label_present",
+          "type": "boolean",
+          "required": true,
+          "owner": "baserow",
+          "description": "Mention « Реклама » présente."
+        },
+        {
+          "name": "inn",
+          "type": "text",
+          "required": false,
+          "owner": "baserow",
+          "description": "INN brut, sans correction."
+        },
+        {
+          "name": "ogrn",
+          "type": "text",
+          "required": false,
+          "owner": "baserow",
+          "description": "OGRN brut, sans correction."
+        },
+        {
+          "name": "inn_valid",
+          "type": "boolean",
+          "required": false,
+          "owner": "pg",
+          "description": "Somme de contrôle INN calculée par le script."
+        },
+        {
+          "name": "ogrn_valid",
+          "type": "boolean",
+          "required": false,
+          "owner": "pg",
+          "description": "Somme de contrôle OGRN calculée par le script."
+        },
+        {
+          "name": "label_complete",
+          "type": "formula",
+          "formula": "and(field('ad_label_present'), not(is_empty(field('erid'))), or(field('inn_valid'), field('ogrn_valid')))",
+          "required": false,
+          "owner": "derived",
+          "description": "Mention, identifiant d'annonceur valide et erid réunis (B-00)."
+        },
+        {
+          "name": "erid",
+          "type": "text",
+          "required": false,
+          "owner": "baserow",
+          "description": "Jeton erid tel qu'affiché."
+        },
+        {
+          "name": "extraction_status",
+          "type": "single_select",
+          "required": true,
+          "owner": "baserow",
+          "options": ["COMPLETE", "INCOMPLETE", "AMBIGUOUS", "MISSING", "UNREADABLE"],
+          "description": "Qualité de l'extraction, y compris pour les étiquettes incomplètes."
+        },
+        {
+          "name": "ad_source",
+          "type": "link_row",
+          "link_row_table": "Plateformes",
+          "multiple": false,
+          "required": false,
+          "owner": "baserow",
+          "description": "Plateforme ou support de la publicité."
+        },
+        {
+          "name": "ad_source_other",
+          "type": "text",
+          "required": false,
+          "owner": "baserow",
+          "description": "Source si elle n'est pas dans le référentiel."
+        },
+        {
+          "name": "ad_url",
+          "type": "url",
+          "required": true,
+          "owner": "baserow",
+          "description": "Adresse de la publicité."
+        },
+        {
+          "name": "creative_ref",
+          "type": "text",
+          "required": false,
+          "owner": "baserow",
+          "description": "Référence de la création, si disponible."
+        },
+        {
+          "name": "creator_refs",
+          "type": "long_text",
+          "required": false,
+          "owner": "baserow",
+          "description": "Créateurs visibles dans la création, tels qu'observés."
+        },
+        {
+          "name": "collected_at",
+          "type": "date_time",
+          "required": true,
+          "owner": "baserow",
+          "description": "Date et heure de collecte."
+        },
+        {
+          "name": "collected_by",
+          "type": "text",
+          "required": true,
+          "owner": "baserow",
+          "description": "Personne ou script qui a collecté la ligne."
+        },
+        {
+          "name": "buyer",
+          "type": "link_row",
+          "link_row_table": "Acheteurs",
+          "multiple": false,
+          "required": false,
+          "owner": "pg",
+          "description": "Annonceur rattaché après validation de l'INN/OGRN."
+        },
+        {
+          "name": "creators",
+          "type": "link_row",
+          "link_row_table": "Createurs",
+          "multiple": true,
+          "required": false,
+          "owner": "baserow",
+          "description": "Créateurs rattachés après revue humaine."
+        },
+        {
+          "name": "match_status",
+          "type": "single_select",
+          "required": false,
+          "owner": "pg",
+          "options": ["UNMATCHED", "AUTO_MATCHED", "MANUAL_MATCHED", "AMBIGUOUS", "REJECTED"],
+          "description": "État du rattachement à un acheteur."
+        },
+        {
+          "name": "validation_status",
+          "type": "single_select",
+          "required": true,
+          "owner": "baserow",
+          "options": ["DRAFT", "SUBMITTED", "IMPORTED", "REJECTED"],
+          "description": "Une fois IMPORTED, la ligne n'est plus modifiable : une correction crée une nouvelle ligne."
+        },
+        {
+          "name": "raw_extract",
+          "type": "long_text",
+          "required": false,
+          "owner": "baserow",
+          "description": "Extrait brut de l'étiquette, pour audit."
+        },
+        {
+          "name": "notes",
+          "type": "long_text",
+          "required": false,
+          "owner": "baserow",
+          "description": "Notes de collecte."
+        },
+        {
+          "name": "sync_status",
+          "type": "single_select",
+          "required": false,
+          "owner": "pg",
+          "options": ["PENDING", "SYNCED", "REJECTED", "ERROR"],
+          "description": "État de la synchronisation."
+        },
+        {
+          "name": "sync_error",
+          "type": "long_text",
+          "required": false,
+          "owner": "pg",
+          "description": "Dernière erreur de synchronisation."
+        },
+        {
+          "name": "last_synced_at",
+          "type": "date_time",
+          "required": false,
+          "owner": "pg",
+          "description": "Date de la dernière synchronisation réussie."
+        },
+        {
+          "name": "created_at",
+          "type": "created_on",
+          "required": false,
+          "owner": "derived"
+        },
+        {
+          "name": "updated_at",
+          "type": "last_modified_on",
+          "required": false,
+          "owner": "derived"
+        }
+      ]
+    },
+    {
+      "name": "Preuves",
+      "description": "Faits et preuves. Les lignes existantes ne sont jamais réécrites : une correction est une nouvelle preuve.",
+      "primary_field": "fact_key",
+      "fields": [
+        {
+          "name": "fact_key",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "owner": "baserow",
+          "description": "Clef du fait (followers, inn, gaming_share, etc.)."
+        },
+        {
+          "name": "fact_id",
+          "type": "text",
+          "required": false,
+          "owner": "pg",
+          "description": "UUID PostgreSQL du fait, une fois importé."
+        },
+        {
+          "name": "record_type",
+          "type": "single_select",
+          "required": true,
+          "owner": "baserow",
+          "options": ["CREATOR", "BUYER"],
+          "description": "Nature de la fiche liée."
+        },
+        {
+          "name": "creator",
+          "type": "link_row",
+          "link_row_table": "Createurs",
+          "multiple": false,
+          "required": false,
+          "owner": "baserow",
+          "description": "Créateur concerné."
+        },
+        {
+          "name": "acheteur",
+          "type": "link_row",
+          "link_row_table": "Acheteurs",
+          "multiple": false,
+          "required": false,
+          "owner": "baserow",
+          "description": "Acheteur concerné."
+        },
+        {
+          "name": "record_reference",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Référence CR-... ou BY-... de la fiche liée."
+        },
+        {
+          "name": "value",
+          "type": "long_text",
+          "required": true,
+          "owner": "baserow",
+          "description": "Valeur observée ou déclarée. Une valeur inconnue reste vide."
+        },
+        {
+          "name": "proof_level",
+          "type": "single_select",
+          "required": true,
+          "owner": "baserow",
+          "options": ["OBSERVED", "DECLARED", "INFERRED"],
+          "description": "Niveau de preuve. Un fait inféré ne rapporte aucun point."
+        },
+        {
+          "name": "confidence",
+          "type": "single_select",
+          "required": true,
+          "owner": "baserow",
+          "options": ["VERIFIED", "PARTIAL", "UNVERIFIED"],
+          "description": "Confiance dans le rattachement du fait à l'entité."
+        },
+        {
+          "name": "source_url",
+          "type": "url",
+          "required": true,
+          "owner": "baserow",
+          "description": "Adresse de la source (P-03)."
+        },
+        {
+          "name": "consulted_at",
+          "type": "date_time",
+          "required": true,
+          "owner": "baserow",
+          "description": "Date de consultation de la source."
+        },
+        {
+          "name": "query_used",
+          "type": "text",
+          "required": false,
+          "owner": "baserow",
+          "description": "Requête qui a produit la source."
+        },
+        {
+          "name": "service",
+          "type": "text",
+          "required": false,
+          "owner": "baserow",
+          "description": "Service utilisé (Exa, SerpApi, lecture directe, registre)."
+        },
+        {
+          "name": "is_current",
+          "type": "boolean",
+          "required": false,
+          "owner": "pg",
+          "description": "Fait courant ou supersédé."
+        },
+        {
+          "name": "review_status",
+          "type": "single_select",
+          "required": true,
+          "owner": "baserow",
+          "options": ["PENDING", "ACCEPTED", "REJECTED", "CONFLICT"],
+          "description": "Revue humaine de la preuve."
+        },
+        {
+          "name": "reviewed_by",
+          "type": "text",
+          "required": false,
+          "owner": "baserow",
+          "description": "Relecteur."
+        },
+        {
+          "name": "reviewed_at",
+          "type": "date_time",
+          "required": false,
+          "owner": "baserow",
+          "description": "Date de la revue."
+        },
+        {
+          "name": "recorded_at",
+          "type": "date_time",
+          "required": false,
+          "owner": "pg",
+          "description": "Date d'enregistrement en base."
+        },
+        {
+          "name": "notes",
+          "type": "long_text",
+          "required": false,
+          "owner": "baserow",
+          "description": "Notes de revue."
+        },
+        {
+          "name": "sync_status",
+          "type": "single_select",
+          "required": false,
+          "owner": "pg",
+          "options": ["PENDING", "SYNCED", "REJECTED", "ERROR"],
+          "description": "État de la synchronisation."
+        },
+        {
+          "name": "sync_error",
+          "type": "long_text",
+          "required": false,
+          "owner": "pg",
+          "description": "Dernière erreur de synchronisation."
+        },
+        {
+          "name": "last_synced_at",
+          "type": "date_time",
+          "required": false,
+          "owner": "pg",
+          "description": "Date de la dernière synchronisation réussie."
+        },
+        {
+          "name": "created_at",
+          "type": "created_on",
+          "required": false,
+          "owner": "derived"
+        },
+        {
+          "name": "updated_at",
+          "type": "last_modified_on",
+          "required": false,
+          "owner": "derived"
+        }
+      ]
+    },
+    {
+      "name": "Decisions",
+      "description": "Journal des décisions. Écrit par PostgreSQL, en lecture seule dans Baserow.",
+      "primary_field": "decision_ref",
+      "fields": [
+        {
+          "name": "decision_ref",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "owner": "pg",
+          "description": "Référence stable de la décision."
+        },
+        {
+          "name": "decision_id",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "UUID PostgreSQL de l'événement."
+        },
+        {
+          "name": "record_type",
+          "type": "single_select",
+          "required": true,
+          "owner": "pg",
+          "options": ["CREATOR", "BUYER"],
+          "description": "Nature de la fiche concernée."
+        },
+        {
+          "name": "creator",
+          "type": "link_row",
+          "link_row_table": "Createurs",
+          "multiple": false,
+          "required": false,
+          "owner": "pg",
+          "description": "Créateur concerné."
+        },
+        {
+          "name": "acheteur",
+          "type": "link_row",
+          "link_row_table": "Acheteurs",
+          "multiple": false,
+          "required": false,
+          "owner": "pg",
+          "description": "Acheteur concerné."
+        },
+        {
+          "name": "decision_type",
+          "type": "single_select",
+          "required": true,
+          "owner": "pg",
+          "options": ["WORKFLOW", "ELIGIBILITY", "COMPLIANCE", "AUDIT", "SCORING"],
+          "description": "Nature de la décision."
+        },
+        {
+          "name": "from_status",
+          "type": "text",
+          "required": false,
+          "owner": "pg",
+          "description": "Statut avant la décision."
+        },
+        {
+          "name": "to_status",
+          "type": "text",
+          "required": false,
+          "owner": "pg",
+          "description": "Statut après la décision."
+        },
+        {
+          "name": "score_snapshot",
+          "type": "number",
+          "number_decimal_places": 0,
+          "required": false,
+          "owner": "pg",
+          "description": "Score au moment de la décision."
+        },
+        {
+          "name": "eligibility_snapshot",
+          "type": "single_select",
+          "required": false,
+          "owner": "pg",
+          "options": ["ELIGIBLE", "INELIGIBLE", "REGULATORY_PENDING", "EXCEPTION_APPROVED"],
+          "description": "Éligibilité au moment de la décision."
+        },
+        {
+          "name": "criteria_version",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Version des critères utilisée."
+        },
+        {
+          "name": "justification",
+          "type": "long_text",
+          "required": true,
+          "owner": "pg",
+          "description": "Justification en une ou deux phrases (Q-01)."
+        },
+        {
+          "name": "decided_by",
+          "type": "text",
+          "required": true,
+          "owner": "pg",
+          "description": "Auteur de la décision."
+        },
+        {
+          "name": "decided_at",
+          "type": "date_time",
+          "required": true,
+          "owner": "pg",
+          "description": "Date de la décision."
+        },
+        {
+          "name": "evidence_url",
+          "type": "url",
+          "required": false,
+          "owner": "pg",
+          "description": "Lien vers les preuves examinées."
+        },
+        {
+          "name": "source",
+          "type": "single_select",
+          "required": true,
+          "owner": "pg",
+          "options": ["PIPELINE", "BASEROW", "IMPORT"],
+          "description": "Origine de la décision."
+        },
+        {
+          "name": "created_at",
+          "type": "created_on",
+          "required": false,
+          "owner": "derived"
+        }
+      ]
+    }
+  ]
+}

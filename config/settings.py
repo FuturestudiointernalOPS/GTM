@@ -17,3 +17,12 @@ TELEGRAM_CHAT_ID = optional("TELEGRAM_CHAT_ID")
 EXA_API_KEY = optional("EXA_API_KEY")
 APIFY_API_KEY = optional("APIFY_API_KEY")
 SERPAPI_API_KEY = optional("SERPAPI_API_KEY")
+
+# Baserow. Les endpoints de schéma (tables, champs) attendent un JWT, pas un
+# jeton de base. Le JWT s'obtient avec POST /api/user/token-auth/ et reste
+# valide 60 minutes. Le jeton de base (Token) ne sert qu'aux endpoints de
+# lignes. Empty values mean "not configured": the schema seeder stops.
+BASEROW_URL = optional("BASEROW_URL")
+BASEROW_TOKEN = optional("BASEROW_TOKEN")
+BASEROW_DATABASE_ID = optional("BASEROW_DATABASE_ID")
+BASEROW_AUTH_SCHEME = optional("BASEROW_AUTH_SCHEME", "JWT")
