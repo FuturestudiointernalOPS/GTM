@@ -1,18 +1,32 @@
 # Document de cadrage — ProveItGo GTM Tool
 
-Version 1.2 · 10 novembre 2026
+Version 1.4 · 16 novembre 2026
 
 Propriétaire : superviseur, avec les trois stagiaires.
 
-La version 1.2 intègre deux corrections de recherche : le registre des créateurs
-est interrogeable indépendamment du lien publié (arrêté Roskomnadzor n° 238,
-formulaire Gosuslugi), et plusieurs pays de la CEI ont une autorité et un registre
-identifiés, Kazakhstan compris. Elle sépare le **score commercial** de
-l'**éligibilité réglementaire**, et ajoute le statut REGULATORY_PENDING pour les
-pays non encore cartographiés.
+La version 1.4 fixe la **mesure de l'engagement**, qui restait ouverte : la
+statistique (médiane), la source, la fenêtre, les exclusions et la conduite à
+tenir quand la donnée est illisible, plateforme par plateforme (§5.3). Elle
+ajoute les seuils provisoires de Rutube (5 %) et YouTube (10 %). Les poids, les
+autres seuils et le calcul du score ne changent pas. Le plan de mise en œuvre est
+dans `docs/engagement.md`.
+
+La version 1.3 avait fixé le **calcul du score** : type de chaque critère,
+formule, ordre du calcul, arrondi unique, plafonnement et conduite à tenir quand
+une mesure manque (§3.5, §5.3, §6.3).
+
+La version 1.2 avait séparé le **score commercial** de l'**éligibilité
+réglementaire**, rendu le registre des créateurs interrogeable indépendamment du
+lien publié (arrêté Roskomnadzor n° 238, formulaire Gosuslugi), identifié
+l'autorité et le registre de plusieurs pays de la CEI dont le Kazakhstan, et
+ajouté le statut REGULATORY_PENDING pour les pays non cartographiés.
 
 Les procédures de contrôle sont rédigées dans `docs/verification.md` : ce document
-dit **quoi** exiger, l'autre dit **comment** le prouver.
+dit **quoi** exiger, l'autre dit **comment** le prouver. La mise en œuvre du score
+est décrite dans `docs/scoring.md` : ce document fixe les règles, l'autre les
+exécute sans les réécrire. La mesure de l'engagement est décrite dans
+`docs/engagement.md` : ce document fixe la règle, l'autre la produit, la stocke et
+la teste.
 
 Les critères de ce document ont été **fixés par le donneur d'ordre**. Ils ne sont
 plus des propositions : les valeurs marquées ⟨proposé⟩ dans la version 0.1 sont
@@ -133,6 +147,11 @@ obligatoires sont remplis avec un fait observé ou déclaré.
 Règle **D-02** — Un seul champ obligatoire manquant → **TO REVIEW**. Le doute
 n'est pas un rejet.
 
+Une exception, pour le score seulement : quand la mesure manquante ne peut pas
+changer la décision, la fiche est tranchée sans revue et marquée incomplète
+(règle S-03, §3.5). D-02 continue de s'appliquer à l'identité, à l'éligibilité et
+aux exclusions.
+
 ### 3.4 Dédoublonnage
 
 | Cible | Clef primaire | Clefs de secours | Règle |
@@ -142,6 +161,56 @@ n'est pas un rejet.
 
 Règle **D-03** — Avant toute recherche externe coûteuse, on cherche la fiche dans
 la base. Si elle existe, on met à jour les faits et on ajoute la source.
+
+### 3.5 Calcul du score
+
+Ces règles valent pour les deux filons. Les tableaux du §5.3 et du §6.3 donnent,
+critère par critère, le type, la mesure, le seuil de points complets, le maximum,
+la formule, et le caractère bloquant ou non d'une donnée manquante.
+
+Règle **S-01 — calcul exact, un seul arrondi** — Chaque ligne est calculée
+exactement, en fractions et jamais en nombres à virgule approchés, sans arrondi
+intermédiaire. Les lignes sont additionnées, puis le total est **tronqué une
+seule fois**, à l'unité. Le score est un entier : c'est lui qui est comparé au
+seuil, affiché et enregistré. Le total exact reste dans la fiche.
+
+Pourquoi : arrondir chaque ligne peut ajouter jusqu'à 3 points sur six lignes, et
+arrondir au plus proche ferait entrer un dossier à 69,7 alors que la mesure est
+sous le seuil — c'est changer le seuil sans le dire. La troncature rend le seuil
+entier strictement équivalent à « mesure exacte au seuil ou au-dessus ».
+
+Règle **S-02 — plafonnement** — Une mesure supérieure au seuil de points complets
+donne exactement les points du critère, jamais plus : le rapport entre la mesure
+et le seuil est plafonné à 1 avant la multiplication. Aucun critère n'est négatif
+et aucun point ne se transfère d'un critère à un autre. Une valeur hors de son
+domaine — une part gaming à 180 %, un effectif négatif — n'est pas plafonnée en
+silence : c'est une erreur de donnée, la mesure devient inconnue et la fiche part
+en revue.
+
+Règle **S-03 — mesure inconnue** — Une mesure inconnue ne vaut jamais zéro : elle
+est absente, et la fiche porte la mention « score incomplet ». On note **S** les
+points acquis et **U** le poids total des critères inconnus. Les lignes se lisent
+de haut en bas, la première qui s'applique décide :
+
+| Situation | Suite |
+|---|---|
+| Aucun critère inconnu | décision normale sur le score complet |
+| S + U < 70 | rejet certain : même au maximum sur tout ce qui manque, le seuil reste hors d'atteinte |
+| Sinon, un critère marqué **bloquant** est inconnu | TO REVIEW, quelles que soient les bornes |
+| Sinon, S ≥ 70 | présélection acquise, fiche marquée incomplète |
+| Sinon | TO REVIEW, avec les deux bornes affichées |
+
+Un critère est **bloquant** quand son absence est elle-même une information, ou
+quand il définit le filon. Un compteur de vues masqué est le symptôme courant
+d'abonnés achetés, et l'engagement est le seul critère qui recoupe le nombre
+d'abonnés : il est bloquant. Un critère bloquant inconnu interdit donc la
+présélection même quand les autres suffisent.
+
+Règle **S-04 — ce que la fiche conserve** — Pour chaque critère : la mesure, la
+source qui la porte, et les points en valeur exacte. Pour le score : le total
+exact, le score entier, la mention d'incomplétude éventuelle et la version des
+critères (V-02). Un recalcul sous une autre version n'efface pas le précédent
+(V-03).
 
 ---
 
@@ -254,24 +323,47 @@ campagne au-delà de la limite indiquée sans décision du superviseur.
 70 ou plus : **présélectionné**, puis audit ProveItGo avant d'entrer dans le
 vivier.
 
-| Critère | Points | Points complets quand |
-|---|---|---|
-| Focus gaming | 25 | 80 % ou plus des 30 dernières publications ou streams sont gaming ou esport |
-| Engagement | 25 | Vues moyennes à 20 % des abonnés (Telegram) ou 10 % (VK Video) ; vues de VOD à 5 % des abonnés (Twitch) |
-| Activité | 15 | 8 publications ou streams ou plus sur 30 jours |
-| Prêt pour la publicité | 15 | Contact publicitaire ou grille tarifaire en bio, **ou** publicités étiquetées passées |
-| Sûreté de la plateforme | 10 | VK Video, Twitch ou Rutube (Telegram ou YouTube : 5) |
-| Adéquation de l'audience | 10 | Commentaires et chat en russe |
+| Critère | Type | Mesure | Points complets à | Max | Calcul | Donnée manquante |
+|---|---|---|---|---|---|---|
+| Focus gaming | continu | part gaming ou esport des 30 dernières publications ou streams, en pourcentage de 0 à 100 | 80 % | 25 | 25 × min(1 ; part ÷ 80) | **bloquant** |
+| Engagement | continu, seuil par plateforme | **médiane** des vues par publication ou vidéo (spectateurs simultanés sur Twitch) ÷ abonnés, lus dans le même instantané | Telegram 20 %, VK Video 10 %, Twitch 5 %, Rutube 5 % (provisoire), YouTube 10 % (provisoire) | 25 | 25 × min(1 ; ratio ÷ seuil de la plateforme) | **bloquant** |
+| Activité | continu | publications et streams des 30 derniers jours | 8 | 15 | 15 × min(1 ; n ÷ 8) | non bloquant |
+| Prêt pour la publicité | paliers | deux éléments observés : contact publicitaire ou grille tarifaire en bio ; publicités étiquetées passées | les deux éléments | 15 | 15 / 8 / 0 | non bloquant ; un élément illisible n'est pas un élément absent |
+| Sûreté de la plateforme | paliers | plateforme principale | VK Video, Twitch ou Rutube | 10 | 10 (VK Video, Twitch, Rutube) / 5 (Telegram, YouTube) | jamais inconnu |
+| Adéquation de l'audience | binaire | langue majoritaire des 50 derniers commentaires ou messages de chat | russe majoritaire | 10 | 10 ou 0 | non bloquant, signalé pour l'audit |
 
-Règle **C-02 — attribution partielle** ⟨à valider, §14⟩ — quand le seuil de points
-complets n'est pas atteint, les points sont accordés au prorata de la mesure
-divisée par le seuil, plafonnés aux points du critère. Les critères binaires
-(sûreté de la plateforme, adéquation de l'audience) valent tout ou rien. Pour
-« prêt pour la publicité » : les deux éléments réunis valent 15, un seul vaut 8.
+La ligne « Engagement » se lit selon le tableau suivant ; une seule ligne
+s'applique par fiche, celle de la plateforme principale.
 
-Règle **C-03** — L'engagement se mesure sur une fenêtre glissante documentée
-(30 dernières publications ou 10 dernières VOD). La fenêtre retenue est inscrite
-dans la fiche, sinon deux calculs différents porteraient le même nom.
+| Plateforme (seuil) | Mesure lue | Source | Fenêtre | Statistique | Donnée illisible |
+|---|---|---|---|---|---|
+| **Telegram** (20 %) | vues par publication ÷ abonnés | compteur de vues sous chaque publication | 30 jours, au plus 30 publications ; repli sur les 10 dernières dans les 90 jours | médiane | compteur masqué → inconnu, revue |
+| **VK Video** (10 %) | vues par vidéo longue ÷ abonnés ; clips et directs exclus | compteur de vues de chaque vidéo | 30 jours, au plus 30 vidéos ; repli sur les 10 dernières dans les 90 jours | médiane | inconnu → revue ; chaîne uniquement en direct → revue |
+| **Twitch** (5 %) | spectateurs simultanés moyens ÷ abonnés | statistiques des directs ou outil public de suivi | 10 derniers directs sur 60 jours | médiane | inconnu → revue ; **pas de repli sur les vues de rediffusion** |
+| **Rutube** (5 %, provisoire) | vues par vidéo ÷ abonnés ; clips exclus | compteur de vues de chaque vidéo | 30 jours, au plus 30 vidéos ; repli sur les 10 dernières dans les 90 jours | médiane | inconnu → revue |
+| **YouTube** (10 %, provisoire) | vues par vidéo longue ÷ abonnés ; formats courts exclus | compteur public de chaque vidéo | 30 jours, au plus 30 vidéos ; repli sur les 10 dernières dans les 180 jours | médiane | vues masquées ou restriction d'âge → revue |
+
+Total : 100. Le calcul, l'arrondi, le plafonnement et la mesure inconnue sont
+fixés une fois pour les deux filons au §3.5.
+
+Règle **C-02 — attribution partielle** — Chaque critère a un type, et un seul.
+Un critère **continu** suit la formule de sa ligne : la mesure divisée par le
+seuil de points complets, le rapport plafonné à 1, puis multiplié par le maximum.
+Un critère à **paliers** vaut la valeur fixe du palier atteint, jamais un prorata.
+Un critère **binaire** vaut tout ou rien. « Prêt pour la publicité » n'est
+volontairement pas proportionnel : un seul des deux éléments vaut 8, et non la
+moitié des 15.
+
+Règle **C-03 — une seule mesure par plateforme** — L'engagement se lit sur
+l'échantillon défini au tableau ci-dessus : une mesure, une source, une fenêtre et
+une statistique par plateforme. La statistique est la **médiane** ; la moyenne
+n'est conservée que comme diagnostic et ne rapporte aucun point. Les vues (ou les
+spectateurs simultanés) et les abonnés sont lus dans le **même instantané** : un
+rapport entre deux dates n'est pas une mesure. Une donnée illisible rend la mesure
+inconnue — elle ne vaut jamais zéro et n'est jamais estimée. La fiche conserve
+l'échantillon, la fenêtre réellement utilisée et le nombre d'éléments illisibles,
+pour que le calcul puisse être refait. Le détail et le plan de mise en œuvre sont
+dans `docs/engagement.md`.
 
 ### 5.4 Critères éliminatoires créateur
 
@@ -294,16 +386,25 @@ on signale une incohérence.
 `main_platform`, `handle`, `platform_url`, `platform_account_id`,
 `platform_username`, `platform_coverage_status`, `coverage_checked_at`,
 `display_name`, `country`, `content_language`, `gaming_share`, `followers`,
-`followers_read_at`, `average_views`, `published_last_30_days`,
-`last_published_at`, `rkn_registry_url`, `rkn_search_status`,
+`followers_read_at`, `published_last_30_days`, `last_published_at`,
+`engagement_status`, `rkn_registry_url`, `rkn_search_status`,
 `rkn_search_query`, `rkn_registry_status`, `registry_domain_ok`,
 `registry_url_match`, `a_plus_badge`, `creator_control_verified`,
 `foreign_agent_label`, `ad_contact_or_rate_card`, `past_labeled_ads`,
 `platform_risk`, `eligibility_status`, `verification_date`,
 `verification_evidence`, `contact_channel`, `source_refs`, `criteria_version`.
 
+Quand `engagement_status` vaut `MEASURED`, les champs `engagement_measure`,
+`engagement_statistic`, `engagement_value`, `engagement_sample_size`,
+`engagement_window` et `engagement_read_at` sont obligatoires ; quand il vaut
+`UNKNOWN`, ils restent vides. `engagement_unreadable_count`,
+`engagement_sample_ref` et `engagement_flag` sont facultatifs mais recommandés.
+La migration du schéma est décrite en E1 de `docs/engagement.md`.
+
 Champs utiles mais facultatifs : `other_profiles`, `media_kit_url`, `agency`,
-`audience_geography`, `average_concurrent_viewers`, `audit_notes`.
+`audience_geography`, `average_views`, `average_concurrent_viewers`,
+`audit_notes`. `average_views` et `average_concurrent_viewers` sont des moyennes
+de diagnostic : elles ne notent pas.
 
 ---
 
@@ -351,23 +452,25 @@ l'extraction.
 
 70 ou plus : **qualifié**.
 
-| Critère | Points | Points complets quand |
-|---|---|---|
-| Paie déjà des créateurs | 30 | 2 intégrations gaming étiquetées ou plus sur 90 jours |
-| Vend aux joueurs | 20 | Le gaming est le cœur du produit ou de l'audience |
-| Décideur joignable | 20 | Responsable nommé, avec une adresse e-mail vérifiée |
-| Taille | 15 | Entre 20 et 1 000 employés |
-| Timing | 15 | Lancement, tournoi ou embauche d'un responsable influence dans les 60 derniers jours |
+| Critère | Type | Mesure | Points complets à | Max | Calcul | Donnée manquante |
+|---|---|---|---|---|---|---|
+| Paie déjà des créateurs | paliers | publicités étiquetées distinctes sur 90 jours, une par identifiant (erid) | 2 | 30 | 15 × min(2 ; n) | **bloquant** |
+| Vend aux joueurs | binaire | le gaming est le cœur du produit ou de l'audience | oui | 20 | 20 ou 0 | **bloquant** |
+| Décideur joignable | paliers | responsable nommé avec adresse vérifiée / nommé sans adresse vérifiée / adresse générique seule | nom et adresse vérifiée | 20 | 20 / 10 / 0 | pas de mesure inconnue après enrichissement : contact absent = 0 |
+| Taille | paliers (bande) | effectif observé ou déclaré | 20 à 1 000 employés | 15 | 15 ou 0 | non bloquant |
+| Timing | binaire | lancement, tournoi ou embauche d'un responsable influence, daté de moins de 60 jours | oui | 15 | 15 ou 0 | non bloquant |
 
-Règle **B-01 — attribution partielle** ⟨à valider, §14⟩ — une seule intégration
-étiquetée sur 90 jours vaut 15 sur 30. Les critères binaires (taille, timing)
-valent tout ou rien. « Décideur joignable » : responsable nommé **avec** adresse
-vérifiée = 20, responsable nommé sans adresse vérifiée = 10, adresse générique
-seule = 0.
+Total : 100. Le calcul, l'arrondi, le plafonnement et la mesure inconnue sont
+fixés une fois pour les deux filons au §3.5.
+
+Règle **B-01 — attribution partielle** — Une seule publicité étiquetée sur
+90 jours vaut 15 sur 30. « Taille » et « Timing » valent tout ou rien :
+l'effectif est dans la bande ou il ne l'est pas, l'événement est daté ou il
+n'existe pas. « Décideur joignable » suit ses trois paliers, sans prorata.
 
 Règle **B-02** — L'effectif n'est pas deviné. Il vient soit d'une source
-observable (registre, page équipe, offres d'emploi), soit il reste vide et la
-fiche passe en TO REVIEW si ce champ lui manque pour être qualifiée.
+observable (registre, page équipe, offres d'emploi), soit il reste vide : la
+règle S-03 décide alors si cette absence change la décision.
 
 ### 6.4 Critères éliminatoires acheteur
 
@@ -528,9 +631,10 @@ classement.
 Règle **V-03** — Un changement de version ne reclasse pas automatiquement
 l'existant : on décide explicitement de rejouer ou non, et on documente.
 
-Version actuelle : **1.2** (critères fixés par le donneur d'ordre ; séparation
-score / éligibilité, recherche indépendante dans le registre, CEI partiellement
-cartographiée, politique des pays non cartographiés).
+Version actuelle : **1.4** (mesure de l'engagement fixée : médiane, fenêtre et
+source par plateforme, exclusions, donnée illisible ; seuils provisoires Rutube
+5 % et YouTube 10 %. La 1.3 avait fixé le calcul du score ; la 1.2 avait séparé
+score et éligibilité et fixé la politique des pays non cartographiés).
 
 ---
 
@@ -566,8 +670,8 @@ qualité de la collecte. Un identifiant invalide non plus.
 4. Les critères, les poids et les règles d'attribution partielle, avec leur version.
 5. Un échantillon de référence : 30 creators et 30 buyers enrichis **et vérifiés
    à la main**, avec leur score décomposé.
-6. La méthode de calcul de l'engagement par plateforme (fenêtre, moyenne ou
-   médiane, source des vues).
+6. La méthode de calcul de l'engagement par plateforme, fixée au §5.3 et dans
+   `docs/engagement.md` (fenêtre, statistique, source, exclusions).
 7. Les procédures de vérification réglementaire et les statuts d'éligibilité
    (§9 et `docs/verification.md`), y compris le jeu d'essai de 10 pages et
    5 opérateurs de paris.
@@ -600,47 +704,62 @@ qualité de la collecte. Un identifiant invalide non plus.
 
 ## 14. Points restant à trancher
 
-Les critères sont fixés. Restent des points d'exécution qui bloquent
-l'automatisation s'ils ne sont pas tranchés :
+Les critères et le calcul du score sont fixés (§3.5, §5.3, §6.3). Restent des
+points d'exécution qui bloquent l'automatisation s'ils ne sont pas tranchés :
 
-1. **Attribution partielle** : la règle de prorata décrite en C-02 et B-01
-   doit être validée ou remplacée. Sans elle, un score de 74 n'est pas reproductible.
-2. **Calcul de l'engagement** : fenêtre exacte, moyenne ou médiane, et source des
-   vues pour chaque plateforme (VK Video, Twitch, Rutube, Telegram, YouTube).
-3. **Automatisation de la recherche RKN** : le service public existe, mais ni API
+1. **Calibration des seuils Rutube et YouTube** : la version 1.4 retient 5 % et
+   10 % à titre provisoire. Le pilote de 30 à 50 créateurs par plateforme dira s'ils
+   discriminent ou s'ils mettent tout le monde au plafond ; toute modification
+   crée la version 1.5. La méthode d'engagement elle-même est tranchée (§5.3).
+   Cas non tranché : un créateur **uniquement en direct sur VK Video Live** n'a
+   pas de vues de vidéos ; la 1.4 le laisse en engagement inconnu, donc en revue.
+   Faut-il un seuil séparé sur les spectateurs simultanés ?
+2. **Seuil de présélection et de qualification** : ce document retient 70 partout
+   (§4, §5.3, §6.3) ; un seuil à 74 a été évoqué. À confirmer, puis à uniformiser.
+3. **Unité de comptage des intégrations étiquetées** : une publicité distincte par
+   identifiant, ou une campagne ? Les 30 points de l'acheteur ne sont pas
+   reproductibles sans cette réponse.
+4. **Activité** : exigence du profil (§5.1, « au moins 8 publications ou streams »)
+   ou critère noté avec des points partiels (§5.3) ? Les deux ne peuvent pas être
+   vrais à la fois, aucune exclusion ne couvrant l'activité.
+5. **Seuils observables des critères binaires** : « russe majoritaire » se lit sur
+   combien de messages, et à quel signe reconnaît-on que le gaming est « le cœur »
+   du produit ou de l'audience ?
+6. **Automatisation de la recherche RKN** : le service public existe, mais ni API
    documentée, ni quotas, ni limites de fréquence publiés. Tant que ce n'est pas
    établi, la recherche reste assistée : un humain lance la requête, l'outil
    enregistre la preuve. À documenter : adresse exacte du formulaire et forme des
    résultats.
-4. **Couverture des plateformes** : la liste retenue (15 plateformes, 19 mars
+7. **Couverture des plateformes** : la liste retenue (15 plateformes, 19 mars
    2026) doit être versionnée, revérifiée périodiquement et confiée à un
    responsable. À préciser aussi : comment lire l'audience de façon fiable.
-5. **Actualité des sources de domaines** : la liste russe date du 5 décembre
+8. **Actualité des sources de domaines** : la liste russe date du 5 décembre
    2025, les fiches kirghizes de 2024-2025. Fréquence de contrôle et conduite à
    tenir à définir.
-6. **Structures et actualité des registres de la CEI** : autorités identifiées
+9. **Structures et actualité des registres de la CEI** : autorités identifiées
    pour le Kazakhstan, le Kirghizistan, l'Ouzbékistan, le Belarus, l'Arménie et
    l'Azerbaïdjan ; restent les formats, le champ domaine et
    Moldova/Tadjikistan/Turkménistan. La politique des pays non cartographiés est
    fixée : collecte autorisée, qualification suspendue, dérogation distincte.
-7. **Normalisation figée** des URL, noms juridiques, domaines et libellés
-   d'activité : écrite une fois, testée, pas réinventée à chaque intégration.
-8. **Définition d'« audience adulte »** pour placer une marque de paris : âge
-   déclaré de l'audience, contenu, ou les deux.
-9. **Grille d'audit ProveItGo** : ce que l'audit contrôle exactement, et qui le
-   signe. C'est la porte d'entrée du vivier.
-10. **Créateur russophone établi hors de Russie** et **entreprise hors CEI** :
+10. **Normalisation figée** des URL, noms juridiques, domaines et libellés
+    d'activité : écrite une fois, testée, pas réinventée à chaque intégration.
+11. **Définition d'« audience adulte »** pour placer une marque de paris : âge
+    déclaré de l'audience, contenu, ou les deux.
+12. **Grille d'audit ProveItGo** : ce que l'audit contrôle exactement, et qui le
+    signe. C'est la porte d'entrée du vivier.
+13. **Créateur russophone établi hors de Russie** et **entreprise hors CEI** :
     exclus ou acceptés au cas par cas ?
-11. **Marques de casino et pour adultes** : décision de ProveItGo attendue (X-03).
-12. **Répartition du quota** de 10 messages par semaine entre créateurs et
+14. **Marques de casino et pour adultes** : décision de ProveItGo attendue (X-03).
+15. **Répartition du quota** de 10 messages par semaine entre créateurs et
     acheteurs.
-13. **Liste des clients existants**, pour ne pas prospecter un client.
-14. **Conflit de rôles** entre le Playbook et la répartition proposée pour les
+16. **Liste des clients existants**, pour ne pas prospecter un client.
+17. **Conflit de rôles** entre le Playbook et la répartition proposée pour les
     vérifications : voir `docs/verification.md` §10. La même responsabilité y est
     attribuée deux fois, et l'architecture n'est plus attribuée à personne.
-15. **Source de vérité unique** : les critères restent ici, les procédures dans
-    l'autre document. Le Skill et la base doivent en découler, jamais diverger.
-16. **Validation juridique** du traitement des données et du démarchage par pays,
+18. **Source de vérité unique** : les critères restent ici, les procédures dans
+    l'autre document, le plan de mise en œuvre dans le document de score qui ne
+    les réécrit pas. Le Skill et la base doivent en découler, jamais diverger.
+19. **Validation juridique** du traitement des données et du démarchage par pays,
     y compris le calendrier 2027 pour Telegram et YouTube.
 
 ---

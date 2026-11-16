@@ -70,9 +70,11 @@ interprète les preuves, il ne les crée pas.
 1. **Analyse par le modèle avec schéma strict** — dès qu'Intern 2 aura fourni
    les critères réels, valider la sortie du modèle contre un schéma et contre
    les preuves, au lieu du prompt provisoire actuel.
-2. **Score et éligibilité déterministes** — certains points de calcul restent à
-   trancher (attribution partielle, formule d'engagement), donc le score reste
-   une étape à part, versionnée.
+2. **Score et éligibilité déterministes** — les règles de calcul sont fixées au
+   cadrage (§3.5) et le plan de mise en œuvre est dans `docs/scoring.md`. La
+   mesure de l'engagement est fixée en 1.4 (`docs/engagement.md`) ; restent la
+   calibration des seuils Rutube et YouTube et le cas VK Video Live seul. Le score
+   reste une étape à part, versionnée.
 3. **Baserow** — remplacer le fichier JSON par la vraie base, sans changer le
    contrat `contains_url` / `contains_handle` / `add`.
 4. **Copilote analyste** — optionnel, en lecture seule, avec budget et liste
