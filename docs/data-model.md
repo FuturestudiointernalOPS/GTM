@@ -273,7 +273,7 @@ plateforme Telegram ou YouTube porte une date limite, pas un rejet silencieux.
 
 `tax_id` est une extension pour la CEI et les entreprises hors Russie. Le
 cadrage impose `inn` **ou** `ogrn` ; ce point reste ouvert pour les pays sans
-INN/OGRN (§14.13). Tant qu'il n'est pas tranché, la fiche russe reste la règle.
+INN/OGRN (§14.9). Tant qu'il n'est pas tranché, la fiche russe reste la règle.
 
 #### Activité, site et signal
 
@@ -757,7 +757,7 @@ Champs facultatifs couverts : `agency`, `revenue_band`, `competitors`,
 - **Décisions et opt-out** : conservés pour prouver qui a décidé quoi, quand et
   sur quelle base (H-01, Q-01).
 - **Validation juridique** : la base légale du traitement et du démarchage par
-  pays reste à valider avant production (§14.16). Ce document ne tranche pas
+  pays reste à valider avant production (§14.15). Ce document ne tranche pas
   cette question.
 
 ## 9. Points restant à trancher avant automatisation
@@ -773,7 +773,7 @@ Champs facultatifs couverts : `agency`, `revenue_band`, `competitors`,
    provisoires de Rutube et YouTube (§14.1) et le cas VK Video Live seul.
 4. **Identité hors Russie** : `tax_id`/`tax_id_type` est une extension ; la
    règle « INN ou OGRN » doit être adaptée pour la CEI et les entreprises hors
-   CEI (§14.10).
+   CEI (§14.9).
 5. **Fusion** : définir qui valide une fusion et comment les liens Baserow sont
    repointés, pour ne pas casser les publicités et contacts déjà rattachés.
 6. **Conservation** : durée des extraits bruts, des contacts et des preuves.

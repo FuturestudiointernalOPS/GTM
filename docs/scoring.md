@@ -51,7 +51,7 @@ est une erreur de donnée, pas un plafond.
 | Activité | publications et streams des 30 derniers jours | entier | comptage daté |
 | Prêt pour la publicité | contact ou grille en bio ; publicités étiquetées passées | deux booléens observés | chaque élément lu, ou déclaré illisible |
 | Sûreté de la plateforme | plateforme principale | valeur fermée | toujours connue |
-| Adéquation de l'audience | langue majoritaire des 50 derniers commentaires ou messages de chat | booléen observé | commentaires ou chat lisibles |
+| Adéquation de l'audience | part de messages en russe sur les 50 derniers commentaires ou messages de chat | pourcentage | au moins 10 messages lisibles ; la proportion est enregistrée |
 
 La médiane est calculée **avant** l'étape de score, par une fonction pure séparée
 (`docs/engagement.md`). L'étape de score ne reçoit que la valeur médiane, les
@@ -62,8 +62,8 @@ individuelles.
 
 | Critère | Mesure attendue | Forme | Condition pour être exploitable |
 |---|---|---|---|
-| Paie déjà des créateurs | publicités étiquetées distinctes sur 90 jours | liste, une entrée par identifiant publicitaire | chaque publicité rattachée à un annonceur |
-| Vend aux joueurs | gaming au cœur du produit ou de l'audience | booléen observé | source lisible |
+| Paie déjà des créateurs | créateurs distincts payés sur 90 jours | entier | chaque paiement rattaché à une publicité étiquetée, dont l'identifiant est conservé comme preuve |
+| Vend aux joueurs | gaming ou esport comme activité principale affichée par l'entreprise | booléen observé | source lisible |
 | Décideur joignable | nom, adresse e-mail, vérification de l'adresse | trois valeurs | enrichissement passé |
 | Taille | effectif | entier | source observable ou déclarée, jamais devinée |
 | Timing | date du dernier événement retenu | date | datée |
@@ -178,10 +178,10 @@ diverge.
 
 | # | Mesures | Total exact | Score | Proposition |
 |---|---|---|---|---|
-| V9 | 1 publicité étiquetée ; gaming cœur ; nommé + adresse vérifiée ; 250 employés ; tournoi il y a 20 jours | 15 + 20 + 20 + 15 + 15 = **85** | **85** | QUALIFIED |
-| V10 | aucune publicité étiquetée ; les quatre autres complets | 0 + 20 + 20 + 15 + 15 = **70** | **70** | QUALIFIED |
-| V11 | 2 publicités étiquetées ; gaming cœur ; nommé + vérifié ; timing récent ; **taille inconnue** | 85 acquis, U = 15 | **85** | QUALIFIED, incomplet |
-| V12 | 3 publicités étiquetées (plafond) | 30, pas 45 | — | contrôle de plafond |
+| V9 | 1 créateur payé ; gaming principal ; nommé + adresse vérifiée ; 250 employés ; tournoi il y a 20 jours | 15 + 20 + 20 + 15 + 15 = **85** | **85** | QUALIFIED |
+| V10 | aucun créateur payé ; les quatre autres complets | 0 + 20 + 20 + 15 + 15 = **70** | **70** | QUALIFIED |
+| V11 | 2 créateurs payés ; gaming principal ; nommé + vérifié ; timing récent ; **taille inconnue** | 85 acquis, U = 15 | **85** | QUALIFIED, incomplet |
+| V12 | 3 créateurs payés (plafond) | 30, pas 45 | — | contrôle de plafond |
 
 Trois tests de score portent tout le raisonnement :
 
@@ -232,6 +232,11 @@ vérifient qu'une moyenne ne peut pas entrer dans le score.
 | P4 | Rapport de distribution : combien de scores, combien d'incomplets, combien de revues | volume de revue par semaine, accepté par le superviseur |
 | P5 | Documenter l'étape et incrémenter la version des critères | cadrage et base d'accord, historique conservé |
 
+P0 et P1 sont faits pour le score : les cas V1 à V14 sont écrits dans les tests
+du module de score et passent. Les cas M1 à M10 relèvent de l'étape de mesure
+(E2 de `docs/engagement.md`) et restent à écrire : la fonction de mesure n'existe
+pas encore. P2 reste à brancher dans le pipeline.
+
 P0 n'est pas une formalité : sans valeurs attendues signées, un écart entre le
 code et la règle se tranche à la discussion, et c'est ainsi qu'un 74 apparaît.
 
@@ -264,19 +269,18 @@ P0 reste la signature des cas.
 | Les seuils Rutube et YouTube sont provisoires | la distribution peut saturer ou écraser les créateurs | pilote de 30 à 50 par plateforme ; ajustement en 1.5, jamais en place |
 | Twitch ne donne pas les simultanés historiques | on serait tenté de basculer sur les vues de rediffusion | interdit : mesure inconnue, revue ; assumer le volume |
 | Un échantillon pair donne une médiane à ,5 | affichage ambigu | valeur exacte conservée, arrondi seulement à l'affichage |
-| L'activité est à la fois exigence et critère noté (§14.4) | deux lectures du même dossier | trancher avant P0 |
+| L'activité est à la fois exigence et critère noté | deux lectures du même dossier | tranché en 1.4 : critère noté, non éliminatoire ; §5.1 ne parle plus d'exigence |
 | Les cas d'essai vieillissent avec les poids | des tests faux mais verts | versionner les cas avec les critères, et les rejouer à chaque incrément |
 | Vues et abonnés lus à deux dates | un ratio qui n'est pas une mesure | refuser la mesure, ne pas corriger par une estimation |
 | Deux unités de part gaming (60 et 0,60) | des scores cent fois faux | une seule unité, écrite au cadrage : pourcentage de 0 à 100, sans conversion à l'affichage |
 
 ---
 
-## 10. Ordre conseillé
+## 10. Entrées tranchées
 
-Les phases P1 à P5 peuvent se mener en parallèle de la décision, mais quatre
-questions du cadrage restent des **entrées** du calcul : le seuil 70 ou 74 (1),
-l'unité de comptage des intégrations (2), le statut de l'activité (3) et les
-seuils observables des critères binaires (4). La mesure de l'engagement, elle,
-est tranchée en 1.4 (`docs/engagement.md`) ; seuls les seuils Rutube et YouTube
-restent provisoires jusqu'au pilote. Tant que les quatre questions ne sont pas
-tranchées, le score se calcule mais ne se compare pas d'une semaine à l'autre.
+Les cinq entrées du calcul sont fixées en 1.4 : seuil de 70 ; engagement (médiane,
+fenêtre, source, seuils Rutube et YouTube provisoires, `docs/engagement.md`) ;
+unité de comptage des intégrations (le créateur payé) ; activité notée et non
+éliminatoire ; seuils observables des critères binaires. Toute modification de
+l'une d'elles crée une version des critères et ne reclasse pas l'existant
+(V-01, V-03).
