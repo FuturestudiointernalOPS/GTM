@@ -99,6 +99,24 @@ d'écriture ne se connecte pas lui-même : l'appelant fournit la connexion et ou
 la transaction, ce qui rend le tout testable sans base. Pour la production,
 `connect()` lit `DATABASE_URL` et n'importe le pilote qu'à ce moment-là.
 
+## La boucle par fiche
+
+Le parcours traite une fiche à la fois. Un candidat porte sa page, son texte et
+son horodatage de lecture ; la boucle demande au modèle, ancre chaque affirmation
+sur cette page, puis note.
+
+Deux choix de conception valent d'être connus :
+
+- **la preuve est partitionnée par fiche.** Deux créateurs peuvent revendiquer la
+  même clé — une part gaming, un nombre d'abonnés — sans se contredire : chacun a
+  son registre, avec sa page et sa date ;
+- **un candidat en erreur n'arrête pas le lot.** Il finit dans la liste des échecs
+  avec son motif, les autres continuent.
+
+Limite assumée : l'ancre prouve que le modèle a vu une page, pas qu'il y a lu la
+valeur. Exiger une citation littérale pour chaque affirmation serait la prochaine
+protection ; elle n'existe pas encore.
+
 ## Ce qui reste à faire
 
 1. **Analyse par le modèle avec schéma strict** — le schéma des affirmations est
