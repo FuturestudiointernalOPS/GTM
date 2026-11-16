@@ -67,6 +67,16 @@ ENGAGEMENT_MEASURE_KINDS = {
     "youtube": VIEWS_PER_ITEM,
 }
 
+# Size bands, as stored in the record. "1000+" starts at the upper bound, so it
+# cannot prove "1 000 or fewer".
+SIZE_BANDS = {
+    "0-19": False,
+    "20-49": True,
+    "50-199": True,
+    "200-999": True,
+    "1000+": False,
+}
+
 # Platform safety ("sûreté de la plateforme"), in points (§5.3).
 PLATFORM_SAFETY = {
     "vk_video": 10,
@@ -250,6 +260,7 @@ class BuyerMeasures:
     gaming_core: bool | None = None  # gaming is the primary activity shown
     decision_maker: str | None = None  # named_verified, named_unverified, ...
     employees: int | None = None
+    employee_band: str | None = None  # 20-49, 50-199, ... when only a band is known
     recent_event: bool | None = None  # dated within 60 days
 
 
@@ -306,7 +317,7 @@ def apply_engagement_measure(
         engagement_read_at=measure.read_at,
         engagement_sample=measure.sample_size,
         engagement_measure_kind=measure.measure_kind,
-        engagement_measure_run_id=measure_run_id,
+        engagement_measure_run_id=measure_run_id if measure.measure_kind else None,
         engagement_flags=measure.flags,
         engagement_reason=measure.reason,
     )
@@ -528,17 +539,21 @@ def _decision_maker(measures: BuyerMeasures) -> ScoreLine:
 
 def _size(measures: BuyerMeasures) -> ScoreLine:
     base = {"criterion": "size", "maximum": 15, "blocking": False}
-    employees = measures.employees
-    if employees is None:
+    if measures.employees is not None:
+        employees = measures.employees
+        if employees < 0:
+            return _unknown(**base, reason="out_of_domain")
+        inside = 20 <= employees <= 1000
+        label = f"{employees} employés"
+    elif measures.employee_band:
+        band = measures.employee_band.strip()
+        inside = SIZE_BANDS.get(band)
+        if inside is None:
+            return _unknown(**base, reason="out_of_domain")
+        label = f"bande {band}"
+    else:
         return _unknown(**base, reason="missing")
-    if employees < 0:
-        return _unknown(**base, reason="out_of_domain")
-    inside = 20 <= employees <= 1_000
-    return _measured(
-        **base,
-        points=Fraction(15 if inside else 0),
-        measure=f"{employees} employés",
-    )
+    return _measured(**base, points=Fraction(15 if inside else 0), measure=label)
 
 
 def _timing(measures: BuyerMeasures) -> ScoreLine:

@@ -243,6 +243,18 @@ def test_items_from_another_platform_are_ignored():
     assert measure.value == 12_000
 
 
+def test_a_measure_without_kind_carries_no_run_reference():
+    # A platform outside the policy produces no measure run, so there is no id
+    # to reference: passing one anyway would break the score line's foreign key.
+    measure = measure_engagement(
+        items(12, platform="instagram", kind="POST"), profile("instagram")
+    )
+
+    assert measure.measure_kind is None
+    applied = apply_engagement_measure(CreatorMeasures(), measure, measure_run_id="run-1")
+    assert applied.engagement_measure_run_id is None
+
+
 # --- snapshot, domain and determinism ---------------------------------------
 
 

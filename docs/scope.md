@@ -782,9 +782,9 @@ points d'exécution qui bloquent l'automatisation s'ils ne sont pas tranchés :
     vérifications : voir `docs/verification.md` §10. La même responsabilité y est
     attribuée deux fois, et l'architecture n'est plus attribuée à personne.
 14. **Source de vérité unique** : les critères restent ici, les procédures dans
-    l'autre document, les plans de mise en œuvre dans les documents de score et
-    d'engagement, qui ne les réécrivent pas. Le Skill et la base doivent en
-    découler, jamais diverger.
+    l'autre document, les plans de mise en œuvre dans les documents de score,
+    d'engagement et d'enrichissement, qui ne les réécrivent pas. Le Skill et la
+    base doivent en découler, jamais diverger.
 15. **Validation juridique** du traitement des données et du démarchage par pays,
     y compris le calendrier 2027 pour Telegram et YouTube.
 

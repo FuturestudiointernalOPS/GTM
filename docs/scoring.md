@@ -38,6 +38,10 @@ horloge, sans état.
 Pour chaque critère : une mesure, ou rien. Une mesure sans source n'est pas une
 mesure : elle compte comme inconnue (P-03).
 
+Ces mesures sont produites par l'étape d'enrichissement (`docs/enrichment.md`),
+sauf l'engagement, qui vient de la mesure (`docs/engagement.md`) et lui est
+rattaché ensuite.
+
 Chaque mesure a une unité, et une seule, celle de son tableau : la part gaming se
 lit en pourcentage de 0 à 100, jamais en fraction. Une valeur hors de son domaine
 est une erreur de donnée, pas un plafond.
