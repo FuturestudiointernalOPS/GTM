@@ -127,9 +127,9 @@ elle qui dit si la page parle d'un créateur ou d'un acheteur — et l'heure du 
 comme date de lecture. Une page sans texte, ou trouvée par une requête hors plan,
 n'entre pas, et l'on évite ainsi un appel de modèle pour rien.
 
-L'identifiant de fiche est l'**adresse normalisée** de la page tant qu'aucune
-fiche n'existe en base : c'est un repère de run, pas un identifiant de base. Il
-deviendra l'identifiant réel quand les fiches seront créées.
+L'identifiant de fiche est l'**adresse normalisée** de la page tant qu'aucun
+stockage de fiches n'est fourni : c'est un repère de run, pas un identifiant de
+base. Dès qu'un stockage est branché, les vrais identifiants le remplacent.
 
 Pour les créateurs, l'**échantillon d'engagement** se collecte au même moment :
 la plateforme est lue dans l'adresse de la page, un acteur fournit les lignes, et
@@ -150,6 +150,32 @@ et le résultat le dit au lieu de le laisser croire. Un écrivain qui ne renvoie
 rien compte comme « rien écrit » — une fiche rejetée produit une décision, pas
 une course de score. Un écrivain qui échoue est listé par fiche, sans arrêter le
 run.
+
+## La fiche et son identité
+
+Une page notée n'existe nulle part tant qu'elle n'a pas de fiche : c'est la fiche
+qui porte les identifiants auxquels le score et la mesure se rattachent.
+
+| Filon | Clé d'identité | Repli |
+|---|---|---|
+| Créateur | plateforme + pseudo | — |
+| Acheteur | ИНН ou ОГРН | domaine, marqué **provisoire** |
+
+Deux règles :
+
+- **créer est idempotent** : deux passages sur la même page rendent la même fiche,
+  jamais une deuxième ;
+- **une fiche provisoire est promue, pas dupliquée** : le jour où le numéro fiscal
+  apparaît — il vient d'une étiquette publicitaire —, il est rattaché à la fiche
+  déjà créée par le domaine.
+
+Une limite assumée : rien ne relie encore deux comptes d'une même personne sur
+deux plateformes. La clé secondaire prévue par le cadrage, l'adresse
+professionnelle, arrive plus tard ; en attendant, deux profils font deux fiches,
+et la fusion sera un acte explicite.
+
+Une adresse qui n'est pas un profil — une vidéo, un mur, une page de recherche —
+ne crée rien : l'identité rend « aucune ».
 
 ## Ce qui reste à faire
 

@@ -14,7 +14,8 @@ from ai.provider import AIProvider
 from workflows.engagement_step import Fetcher, creator_sampler
 from workflows.pipeline import PipelineResult, run_week
 from workflows.record_flow import RecordScore
-from workflows.record_loop import LoopResult, score_pages
+from workflows.record_loop import LoopResult, SaveMeasure, score_pages
+from workflows.records import RecordStore, ensure_record
 
 Writer = Callable[[RecordScore], str | None]
 
@@ -36,6 +37,8 @@ def run_and_score(
     fetch: Fetcher,
     collect: Callable[[], PipelineResult] | None = None,
     write: Writer | None = None,
+    records: RecordStore | None = None,
+    save_measure: SaveMeasure | None = None,
     week: int | None = None,
     store=None,
     include_betting: bool = False,
@@ -46,10 +49,11 @@ def run_and_score(
     """Run one week end to end.
 
     ``collect`` replaces the real collection, which is how tests stay offline.
-    ``write`` is optional: without it the run returns the rows and writes
-    nothing, which is the state of this project until the database is live. A
-    writer that returns None (a rejected record, which produces no score run)
-    counts as nothing written, not as a failure.
+    ``records`` finds or creates the record behind each candidate, so the rows
+    carry real ids; ``save_measure`` stores the measure before the score line
+    references it. ``write`` is optional: without it the run returns the rows and
+    writes nothing. A writer that returns None (a rejected record, which produces
+    no score run) counts as nothing written, not as a failure.
     """
     result = (
         collect()
@@ -64,12 +68,18 @@ def run_and_score(
         )
     )
 
+    record_for = None
+    if records is not None:
+        record_for = lambda candidate: ensure_record(records, candidate)
+
     scores = score_pages(
         provider,
         result.fresh,
         result.reads,
         read_at=result.collected_at,
         sample_for=creator_sampler(fetch),
+        record_for=record_for,
+        save_measure=save_measure,
     )
 
     written: list[str] = []

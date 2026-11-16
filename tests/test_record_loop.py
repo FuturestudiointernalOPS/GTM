@@ -27,6 +27,7 @@ from workflows.record_loop import (
     score_pages,
     verify_quotes,
 )
+from workflows.records import MemoryRecordStore, ensure_record
 
 READ = "2026-11-10T12:00:00+00:00"
 
@@ -337,3 +338,42 @@ def test_score_pages_can_collect_samples():
     )
 
     assert [record.result.score for record in result.scored] == [79]
+
+
+# --- records and measure ids ------------------------------------------------
+
+
+def test_the_loop_carries_the_record_and_account_ids():
+    store = MemoryRecordStore()
+
+    record = score_candidate(
+        FakeProvider(lambda payload: answer()),
+        candidate(),
+        record_for=lambda item: ensure_record(store, item),
+    )
+
+    assert record.record_id is not None and record.record_id.startswith("rec-")
+    assert record.account_id is not None and record.account_id.startswith("acc-")
+
+
+def test_the_measure_is_saved_before_the_score_line_is_bound():
+    store = MemoryRecordStore()
+    saved = []
+
+    def save(measure, account_id):
+        saved.append((measure.value, account_id))
+        return "measure-1"
+
+    record = score_candidate(
+        FakeProvider(lambda payload: answer()),
+        candidate(),
+        items=items(),
+        record_for=lambda item: ensure_record(store, item),
+        save_measure=save,
+    )
+
+    assert saved == [(2000, record.account_id)]
+    line = next(
+        row for row in record.line_rows() if row["criterion_code"] == "engagement"
+    )
+    assert line["engagement_measure_run_id"] == "measure-1"

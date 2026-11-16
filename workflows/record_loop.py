@@ -15,24 +15,36 @@ excerpt really appears in the page: a claim without one is dropped.
 """
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING
 
 from ai.provider import AIProvider
 from processing.deduplication import normalize_url
-from processing.engagement import EngagementItem
+from processing.engagement import EngagementItem, EngagementMeasure
 from processing.evidence import OBSERVED, EvidenceLedger, Source
 from workflows import query_pool
 from workflows.record_flow import (
     BUYER,
     CREATOR,
     RecordScore,
+    creator_measure,
     score_buyer_record,
     score_creator_record,
 )
+
+if TYPE_CHECKING:
+    from workflows.records import RecordKeys
 
 MAX_TEXT = 20_000
 
 # What the loop may call to obtain one creator's engagement sample.
 SampleFor = Callable[["Candidate"], Iterable[EngagementItem] | None]
+
+# What the loop may call to find or create the record behind a candidate.
+RecordFor = Callable[["Candidate"], "RecordKeys | None"]
+
+# What the loop may call to store a measure before scoring. It receives the
+# measure and the platform account id, and returns the stored measure id.
+SaveMeasure = Callable[[EngagementMeasure, str | None], str | None]
 
 # Shortest excerpt accepted, once whitespace and case are normalised. A shorter
 # one ("25", "60") would match by accident on almost any page.
@@ -123,6 +135,8 @@ def score_pages(
     read_at: str,
     items_by_record: Mapping[str, Iterable[EngagementItem]] | None = None,
     sample_for: SampleFor | None = None,
+    record_for: RecordFor | None = None,
+    save_measure: SaveMeasure | None = None,
 ) -> LoopResult:
     """Score the fresh pages of one run: one model call per candidate."""
     return score_candidates(
@@ -130,6 +144,8 @@ def score_pages(
         candidates_from_pages(pages, reads, read_at=read_at),
         items_by_record=items_by_record,
         sample_for=sample_for,
+        record_for=record_for,
+        save_measure=save_measure,
     )
 
 
@@ -199,9 +215,20 @@ def score_candidate(
     *,
     items: Iterable[EngagementItem] | None = None,
     sample_for: SampleFor | None = None,
+    record_for: RecordFor | None = None,
+    save_measure: SaveMeasure | None = None,
     measure_run_id: str | None = None,
 ) -> RecordScore:
-    """Turn one candidate into a score, with its own evidence."""
+    """Turn one candidate into a score, with its own evidence.
+
+    ``record_for`` gives the record and account ids, ``save_measure`` stores the
+    measure before it is bound to the score line, and ``measure_run_id`` is the
+    explicit form for tests.
+    """
+    keys = record_for(candidate) if record_for is not None else None
+    record_id = keys.record_id if keys is not None else candidate.record_id
+    account_id = keys.account_id if keys is not None else None
+
     if items is None and sample_for is not None:
         items = sample_for(candidate)
 
@@ -211,12 +238,18 @@ def score_candidate(
         values, source_url=candidate.source_url, read_at=candidate.read_at
     )
 
+    measure = None
     if candidate.kind == CREATOR:
+        if items is not None:
+            measure = creator_measure(values, ledger, items=items)
+        bound = measure_run_id
+        if measure is not None and save_measure is not None:
+            bound = save_measure(measure, account_id)
         record = score_creator_record(
             values,
             ledger,
-            items=items,
-            measure_run_id=measure_run_id,
+            measure=measure,
+            measure_run_id=bound,
         )
     else:
         record = score_buyer_record(values, ledger)
@@ -224,7 +257,9 @@ def score_candidate(
     return replace(
         record,
         rejected=tuple(rejected) + record.rejected,
-        record_id=candidate.record_id,
+        record_id=record_id,
+        account_id=account_id,
+        measure=measure,
     )
 
 
@@ -234,6 +269,8 @@ def score_candidates(
     *,
     items_by_record: Mapping[str, Iterable[EngagementItem]] | None = None,
     sample_for: SampleFor | None = None,
+    record_for: RecordFor | None = None,
+    save_measure: SaveMeasure | None = None,
 ) -> LoopResult:
     """Score a batch; a record that fails is listed, the others continue."""
     scored: list[RecordScore] = []
@@ -248,6 +285,8 @@ def score_candidates(
                     candidate,
                     items=samples.get(candidate.record_id),
                     sample_for=sample_for,
+                    record_for=record_for,
+                    save_measure=save_measure,
                 )
             )
         except Exception as error:  # noqa: BLE001 - one bad record must not stop the batch

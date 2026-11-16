@@ -11,6 +11,7 @@ from integrations.webreader import PageRead
 from processing.evidence import EvidenceLedger
 from workflows.pipeline import PipelineResult
 from workflows.record_flow import RecordScore
+from workflows.records import MemoryRecordStore
 from workflows.weekly_run import run_and_score
 
 READ = "2026-11-10T12:00:00+00:00"
@@ -131,3 +132,40 @@ def test_a_failed_write_is_listed_and_stops_nothing():
     )
 
     assert run.write_failed == (("vk.com/creator", "base indisponible"),)
+
+
+# --- records ----------------------------------------------------------------
+
+
+def test_the_run_uses_real_ids_when_a_store_is_given():
+    run = run_and_score(
+        provider=FakeProvider(),
+        fetch=lambda platform, url: vk_rows(),
+        collect=collected,
+        records=MemoryRecordStore(),
+    )
+
+    record = run.scores.scored[0]
+    assert record.record_id == "rec-1"
+    assert record.account_id == "acc-1"
+
+
+def test_two_runs_on_the_same_page_reuse_the_record():
+    store = MemoryRecordStore()
+
+    first = run_and_score(
+        provider=FakeProvider(),
+        fetch=lambda platform, url: vk_rows(),
+        collect=collected,
+        records=store,
+    )
+    second = run_and_score(
+        provider=FakeProvider(),
+        fetch=lambda platform, url: vk_rows(),
+        collect=collected,
+        records=store,
+    )
+
+    assert (
+        first.scores.scored[0].record_id == second.scores.scored[0].record_id
+    )
