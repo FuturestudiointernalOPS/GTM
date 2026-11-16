@@ -16,7 +16,9 @@ Elle tranche aussi les quatre entrées qui restaient ouvertes au §14 : le seuil
 pas la création publicitaire ; l'**activité** est notée et non éliminatoire ; les
 critères binaires ont un seuil observable — part de messages en russe, activité
 principale affichée par l'entreprise. Elle retire enfin l'élimination qui
-doublait le critère « vend aux joueurs » chez l'acheteur.
+doublait le critère « vend aux joueurs » chez l'acheteur. Chez le créateur, elle
+exclut une fiche dont la part de contenu gaming est mesurée à zéro : un créateur
+non gaming n'est pas un créateur à faible score.
 
 La version 1.3 avait fixé le **calcul du score** : type de chaque critère,
 formule, ordre du calcul, arrondi unique, plafonnement et conduite à tenir quand
@@ -389,11 +391,18 @@ Quel que soit le score :
 | E-C-02 | Étiquette d'agent étranger | REJECTED (X-02) |
 | E-C-03 | Créateur présent uniquement sur Instagram ou Facebook | REJECTED (X-05) |
 | E-C-04 | Hors de la fourchette 5 000 – 300 000 abonnés | Hors profil, non présélectionné |
+| E-C-05 | Part de contenu gaming ou esport mesurée à **zéro** sur la fenêtre | REJECTED |
 
 Règle **C-04 — signal d'audit, pas de rejet** — des sauts d'abonnés sans vues
 correspondantes ne disqualifient pas automatiquement : la fiche va à l'audit
 ProveItGo. On ne prétend pas prouver des faux abonnés avec des données publiques,
 on signale une incohérence.
+
+Règle **C-05 — aucun contenu gaming** — Une part gaming mesurée à zéro exclut la
+fiche (E-C-05) : elle n'est pas un simple manque de 25 points. Une part
+**inconnue** ne déclenche pas cette règle : elle rend le score incomplet et
+bloque la présélection (S-03). Le zéro mesuré et l'inconnu ne se confondent
+jamais, et une part calculée sur moins de 10 éléments n'est pas un zéro mesuré.
 
 ### 5.5 Champs obligatoires (creator)
 
@@ -659,7 +668,8 @@ Version actuelle : **1.4** (engagement fixé : médiane, fenêtre et source par
 plateforme, exclusions, donnée illisible ; seuils provisoires Rutube 5 % et
 YouTube 10 % ; seuil de 70 confirmé ; intégration comptée par créateur payé ;
 activité notée et non éliminatoire ; seuils observables des critères binaires ;
-élimination « ne vend pas aux joueurs » retirée, le critère reste à 20 points.
+élimination « ne vend pas aux joueurs » retirée, le critère reste à 20 points ;
+part gaming mesurée à zéro exclue (E-C-05).
 La 1.3 avait fixé le calcul du score ; la 1.2 avait séparé score et éligibilité).
 
 ---
