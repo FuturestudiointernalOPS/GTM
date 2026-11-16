@@ -91,7 +91,7 @@ SELECT_DECISION = "SELECT workflow_status, score_proposal FROM record WHERE id =
 # docs/data-model.md).
 SELECT_TRANSITION = """
 SELECT transition_record(
-    %s::uuid, %s::workflow_status, %s, %s, 'SCORING', %s, NULL, %s::jsonb
+    %s::uuid, %s::workflow_status, %s, %s, %s::decision_type, %s, NULL, %s::jsonb
 )
 """
 
@@ -257,6 +257,7 @@ def write_decision(
                     status,
                     _justification(result),
                     actor,
+                    "SCORING",
                     result.criteria_version,
                     json.dumps(_payload(result)),
                 ),
@@ -315,6 +316,135 @@ def _exact_text(value: Fraction | None) -> str | None:
         return None
     decimal = Decimal(value.numerator) / Decimal(value.denominator)
     return format(decimal.normalize(), "f")
+
+
+# --- eligibility -------------------------------------------------------------
+
+SELECT_FICHE = "SELECT workflow_status, score FROM record WHERE id = %s"
+
+RETIRE_CHECK = """
+UPDATE eligibility_check
+SET is_current = false
+WHERE record_id = %s AND check_type = %s AND is_current
+"""
+
+INSERT_CHECK = """
+INSERT INTO eligibility_check (
+    record_id, check_type, status, reasons, checked_by, payload
+) VALUES (%s, %s, %s, %s, %s, %s::jsonb)
+RETURNING id
+"""
+
+INSERT_ELIGIBILITY_DECISION = """
+INSERT INTO eligibility_decision (
+    record_id, status, justification, decided_by, criteria_version
+) VALUES (%s, %s, %s, %s, %s)
+RETURNING id
+"""
+
+LINK_DECISION_CHECK = """
+INSERT INTO eligibility_decision_check (decision_id, check_id) VALUES (%s, %s)
+"""
+
+UPDATE_ELIGIBILITY = """
+UPDATE record SET eligibility_status = %s, updated_at = now() WHERE id = %s
+"""
+
+
+def write_eligibility(
+    connection,
+    *,
+    record_id,
+    decision,
+    actor: str,
+    criteria_version: str = CRITERIA_VERSION,
+) -> str | None:
+    """Store the checks, the eligibility verdict, and move the fiche.
+
+    The checks are always stored, superseding the previous ones: they are the
+    evidence behind the verdict. The verdict row and the ``eligibility_status``
+    column exist only when the decision has one — a record held for compliance
+    or rejected by a label has no eligibility status, and claiming one would be
+    a verdict nobody took.
+
+    The workflow move goes through ``transition_record()``, and only when the
+    status actually changes. Returns the event id, or None when the fiche was
+    already in that status.
+    """
+    if record_id is None:
+        raise ValueError("an eligibility decision needs a record id")
+    if not decision.checks:
+        raise ValueError("an eligibility decision needs at least one check")
+
+    with connection.cursor() as cursor:
+        cursor.execute(SELECT_FICHE, (str(record_id),))
+        row = cursor.fetchone()
+        if row is None:
+            raise LookupError(f"record {record_id} does not exist")
+        status, score = row
+
+        # A fiche that was never scored is not eligible for anything: the
+        # regulatory check comes after the score in the journey, and a score
+        # cannot be replaced by a check either (H-04).
+        if score is None:
+            raise ValueError("a record without a score cannot be declared eligible")
+        if status == REJECTED:
+            raise ValueError("a rejected record is not eligible")
+
+        check_ids = []
+        for item in decision.checks:
+            cursor.execute(RETIRE_CHECK, (str(record_id), item.check_type))
+            cursor.execute(
+                INSERT_CHECK,
+                (
+                    str(record_id),
+                    item.check_type,
+                    item.status,
+                    list(item.reasons),
+                    actor,
+                    json.dumps({"source_url": item.source_url}),
+                ),
+            )
+            check_ids.append(cursor.fetchone()[0])
+
+        if decision.status is not None:
+            cursor.execute(
+                INSERT_ELIGIBILITY_DECISION,
+                (
+                    str(record_id),
+                    decision.status,
+                    decision.justification,
+                    actor,
+                    criteria_version,
+                ),
+            )
+            decision_id = cursor.fetchone()[0]
+            for check_id in check_ids:
+                cursor.execute(LINK_DECISION_CHECK, (decision_id, check_id))
+            cursor.execute(UPDATE_ELIGIBILITY, (decision.status, str(record_id)))
+
+        event_id = None
+        if status != decision.workflow_status:
+            cursor.execute(
+                SELECT_TRANSITION,
+                (
+                    str(record_id),
+                    decision.workflow_status,
+                    decision.justification,
+                    actor,
+                    "ELIGIBILITY",
+                    None,
+                    json.dumps(
+                        {
+                            "eligibility_status": decision.status,
+                            "checks": [item.check_type for item in decision.checks],
+                        }
+                    ),
+                ),
+            )
+            event_id = cursor.fetchone()[0]
+
+    return None if event_id is None else str(event_id)
 
 
 def _numeric(value: Fraction | None) -> Decimal | None:

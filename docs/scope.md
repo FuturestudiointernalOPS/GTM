@@ -35,7 +35,9 @@ dit **quoi** exiger, l'autre dit **comment** le prouver. La mise en œuvre du sc
 est décrite dans `docs/scoring.md` : ce document fixe les règles, l'autre les
 exécute sans les réécrire. La mesure de l'engagement est décrite dans
 `docs/engagement.md` : ce document fixe la règle, l'autre la produit, la stocke et
-la teste.
+la teste. La table d'éligibilité est décrite dans `docs/eligibility.md` : ce
+document et `verification.md` fixent les règles, l'autre les applique dans l'ordre
+et refuse de transformer un doute en autorisation.
 
 Les critères de ce document ont été **fixés par le donneur d'ordre**. Ils ne sont
 plus des propositions : les valeurs marquées ⟨proposé⟩ dans la version 0.1 sont

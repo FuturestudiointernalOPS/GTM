@@ -20,8 +20,16 @@ from integrations.postgres import (
     connect,
     is_configured,
     write_decision,
+    write_eligibility,
     write_measure,
     write_score,
+)
+from processing.eligibility import (
+    NOT_FOUND,
+    VERIFIED,
+    CreatorVerification,
+    EligibilityDecision,
+    decide_creator,
 )
 from processing.engagement import EngagementMeasure
 from processing.scoring import (
@@ -301,8 +309,9 @@ def test_a_preselected_creator_stops_at_scored():
     assert params[1] == "SCORED"
     assert params[2] == "score 79 sur 100 (79.875 exact), seuil 70 : PRESELECTED"
     assert params[3] == "test"
+    assert params[4] == "SCORING"
 
-    payload = json.loads(params[5])
+    payload = json.loads(params[6])
     assert payload["proposal"] == "PRESELECTED"
     assert payload["score_exact"] == "79.875"
     assert payload["bounds"] == ["79.875", "79.875"]
@@ -349,7 +358,7 @@ def test_a_creator_out_of_profile_keeps_its_label_in_the_journal():
     assert decision(connection, result) == "REJECTED"
 
     _, params = transition(connection)
-    payload = json.loads(params[5])
+    payload = json.loads(params[6])
     assert payload["proposal"] == "OUT_OF_PROFILE"
 
     # score_proposal has no OUT_OF_PROFILE value, so the fiche says REJECTED.
@@ -400,6 +409,234 @@ def test_a_decision_without_a_record_id_raises():
         decision(connection, score_creator(creator()), record_id=None)
 
     assert connection.log == []
+
+
+# --- eligibility -------------------------------------------------------------
+
+
+class _EligibilityCursor:
+    def __init__(self, connection):
+        self._connection = connection
+        self._row = None
+
+    def execute(self, sql, params=()):
+        normalized = " ".join(sql.split())
+        self._connection.log.append((normalized, params))
+        self._row = self._connection.answer(normalized)
+
+    def fetchone(self):
+        return self._row
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class EligibilityConnection:
+    def __init__(self, status="SCORED", score=79, exists=True):
+        self.log = []
+        self.status = status
+        self.score = score
+        self.exists = exists
+        self.ids = 0
+
+    def cursor(self):
+        return _EligibilityCursor(self)
+
+    def answer(self, sql):
+        if "SELECT workflow_status, score FROM record" in sql:
+            return (self.status, self.score) if self.exists else None
+        if "SELECT transition_record" in sql:
+            return ("event-9",)
+        if "RETURNING id" in sql:
+            self.ids += 1
+            return (f"id-{self.ids}",)
+        return None
+
+
+def creator_verification(**overrides):
+    values = {
+        "platform_covered": True,
+        "followers": 25_000,
+        "foreign_agent_label": False,
+        "rkn_status": VERIFIED,
+        "sanction_status": NOT_FOUND,
+    }
+    values.update(overrides)
+    return CreatorVerification(**values)
+
+
+def statements(connection):
+    return [sql for sql, _ in connection.log]
+
+
+def transition_of(connection):
+    return next(
+        params
+        for sql, params in connection.log
+        if "SELECT transition_record" in sql
+    )
+
+
+def test_an_eligible_creator_moves_from_scored_to_preselected():
+    connection = EligibilityConnection()
+    decision = decide_creator(creator_verification())
+
+    event_id = write_eligibility(
+        connection, record_id="rec-1", decision=decision, actor="verification"
+    )
+
+    assert event_id == "event-9"
+
+    params = transition_of(connection)
+    assert params[1] == "PRESELECTED"
+    assert params[3] == "verification"
+    assert params[4] == "ELIGIBILITY"
+    assert json.loads(params[6])["eligibility_status"] == "ELIGIBLE"
+
+    update = next(
+        params for sql, params in connection.log if "SET eligibility_status" in sql
+    )
+    assert update == ("ELIGIBLE", "rec-1")
+
+
+def test_an_ineligible_creator_moves_to_ineligible():
+    connection = EligibilityConnection()
+    decision = decide_creator(creator_verification(rkn_status=NOT_FOUND))
+
+    write_eligibility(
+        connection, record_id="rec-1", decision=decision, actor="verification"
+    )
+
+    assert transition_of(connection)[1] == "INELIGIBLE"
+    assert json.loads(transition_of(connection)[6])["eligibility_status"] == (
+        "INELIGIBLE"
+    )
+
+
+def test_a_compliance_hold_stores_checks_but_no_verdict():
+    connection = EligibilityConnection()
+    decision = decide_creator(creator_verification(sanction_status=VERIFIED))
+
+    write_eligibility(
+        connection, record_id="rec-1", decision=decision, actor="verification"
+    )
+
+    assert decision.status is None
+    assert any("INSERT INTO eligibility_check" in sql for sql in statements(connection))
+    assert not any(
+        "INSERT INTO eligibility_decision " in sql for sql in statements(connection)
+    )
+    assert not any("SET eligibility_status" in sql for sql in statements(connection))
+    assert transition_of(connection)[1] == "COMPLIANCE_REVIEW"
+
+
+def test_a_previous_check_of_the_same_type_is_retired():
+    connection = EligibilityConnection()
+    decision = decide_creator(creator_verification())
+
+    write_eligibility(
+        connection, record_id="rec-1", decision=decision, actor="verification"
+    )
+
+    kinds = [
+        "retire" if "is_current = false" in sql else "insert"
+        for sql in statements(connection)
+        if "is_current = false" in sql or "INSERT INTO eligibility_check" in sql
+    ]
+    assert kinds[:4] == ["retire", "insert", "retire", "insert"]
+
+
+def test_the_checks_are_linked_to_the_verdict():
+    connection = EligibilityConnection()
+    decision = decide_creator(creator_verification())
+
+    write_eligibility(
+        connection, record_id="rec-1", decision=decision, actor="verification"
+    )
+
+    links = [
+        params
+        for sql, params in connection.log
+        if "INSERT INTO eligibility_decision_check" in sql
+    ]
+    assert len(links) == len(decision.checks)
+    # The verdict row is written after the checks, so it takes the next id.
+    assert all(params[0] == f"id-{len(decision.checks) + 1}" for params in links)
+
+
+def test_a_fiche_already_in_that_status_writes_no_event():
+    connection = EligibilityConnection(status="PRESELECTED")
+    decision = decide_creator(creator_verification())
+
+    event_id = write_eligibility(
+        connection, record_id="rec-1", decision=decision, actor="verification"
+    )
+
+    assert event_id is None
+    assert not any("SELECT transition_record" in sql for sql in statements(connection))
+
+
+def test_a_scoreless_fiche_cannot_be_declared_eligible():
+    connection = EligibilityConnection(score=None)
+    decision = decide_creator(creator_verification())
+
+    with pytest.raises(ValueError, match="without a score"):
+        write_eligibility(
+            connection, record_id="rec-1", decision=decision, actor="verification"
+        )
+
+    assert not any("INSERT INTO eligibility_check" in sql for sql in statements(connection))
+
+
+def test_a_rejected_fiche_is_not_eligible():
+    connection = EligibilityConnection(status="REJECTED")
+    decision = decide_creator(creator_verification())
+
+    with pytest.raises(ValueError, match="rejected"):
+        write_eligibility(
+            connection, record_id="rec-1", decision=decision, actor="verification"
+        )
+
+
+def test_an_eligibility_decision_needs_a_check():
+    connection = EligibilityConnection()
+    empty = EligibilityDecision(
+        status="ELIGIBLE", workflow_status="PRESELECTED", justification="x"
+    )
+
+    with pytest.raises(ValueError, match="at least one check"):
+        write_eligibility(
+            connection, record_id="rec-1", decision=empty, actor="verification"
+        )
+
+
+def test_a_missing_record_raises():
+    connection = EligibilityConnection(exists=False)
+    decision = decide_creator(creator_verification())
+
+    with pytest.raises(LookupError):
+        write_eligibility(
+            connection, record_id="rec-1", decision=decision, actor="verification"
+        )
+
+
+def test_the_eligibility_insert_columns_exist_in_the_schema():
+    from integrations.postgres import (
+        INSERT_CHECK,
+        INSERT_ELIGIBILITY_DECISION,
+        LINK_DECISION_CHECK,
+    )
+
+    assert insert_columns(INSERT_CHECK) <= ddl_columns("eligibility_check")
+    assert insert_columns(INSERT_ELIGIBILITY_DECISION) <= ddl_columns(
+        "eligibility_decision"
+    )
+    assert insert_columns(LINK_DECISION_CHECK) <= ddl_columns(
+        "eligibility_decision_check"
+    )
 
 
 # --- the connection factory -------------------------------------------------

@@ -252,6 +252,39 @@ Trois choix qui évitent d'abîmer l'historique :
   Le payload conserve la proposition brute, les bornes et l'indicateur de mesure
   incomplète.
 
+### Le contrôle d'éligibilité
+
+Entre `SCORED` et `PRESELECTED`, il y a un contrôle que le score ne peut pas
+remplacer (H-04). Il est dans `processing/eligibility.py`, et son contrat est
+`docs/eligibility.md` : l'étape lit des **résultats de contrôle** — registre RKN,
+étiquette d'agent étranger, criblage des sanctions, licence de paris — et applique
+la table de décision de `docs/verification.md`.
+
+```python
+from processing.eligibility import decide_creator, decide_buyer
+from integrations.postgres import write_eligibility
+
+decision = decide_creator(verification)   # ou decide_buyer
+write_eligibility(
+    connection, record_id=record.record_id, decision=decision, actor="verification"
+)
+```
+
+`write_eligibility` écrit chaque contrôle (le contrôle courant d'un même type
+remplace l'ancien), la décision quand il y en a une, puis demande le mouvement à
+`transition_record()` avec le type `ELIGIBILITY`. Un rejet par étiquette part
+directement en `REJECTED` sans verdict d'éligibilité ; une correspondance aux
+sanctions part en `COMPLIANCE_REVIEW` de la même façon.
+
+Deux garde-fous sont dans le code, pas dans la discipline de l'opérateur :
+
+- une fiche **sans score** ne peut pas être déclarée éligible ;
+- une fiche **rejetée** non plus.
+
+Ce qui manque encore : la **collecte** des contrôles. Rien n'interroge Gosuslugi,
+les listes de sanctions ou un registre de licences ; l'étape est prête à recevoir
+ces résultats, et les produire est le travail suivant.
+
 ## Ce qui reste à faire
 
 1. **Analyse par le modèle avec schéma strict** — le schéma des affirmations est
@@ -261,10 +294,11 @@ Trois choix qui évitent d'abîmer l'historique :
    (`workflows/record_flow.py`) et les règles sont fixées (§3.5,
    `docs/scoring.md`). L'écriture des lignes et de la décision est prête
    (`integrations/postgres.py`), les fiches sont créées ou retrouvées
-   (`integrations/record_store.py`) et le run complet est branché
-   (`workflows/postgres_run.py`), testés contre une connexion simulée. Restent la
-   calibration des seuils Rutube et YouTube, le cas VK Video Live seul, le
-   contrôle d'éligibilité qui fait passer `SCORED` à `PRESELECTED`, l'exécution
+   (`integrations/record_store.py`), le run complet est branché
+   (`workflows/postgres_run.py`) et la table d'éligibilité est implémentée
+   (`processing/eligibility.py`, `docs/eligibility.md`), testés contre une
+   connexion simulée. Restent la calibration des seuils Rutube et YouTube, le cas
+   VK Video Live seul, la **collecte** des contrôles d'éligibilité, l'exécution
    réelle contre un serveur et l'extraction réelle des faits qui alimente la
    chaîne.
 3. **Baserow** — remplacer le fichier JSON par la vraie base, sans changer le
