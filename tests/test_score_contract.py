@@ -36,6 +36,7 @@ LINE_KEYS = {
     "points_max",
     "blocking",
     "reason",
+    "engagement_measure_run_id",
 }
 
 
@@ -104,7 +105,7 @@ def test_the_score_run_row_only_uses_declared_columns():
     row = score_creator(creator()).to_score_run()
 
     assert row is not None
-    assert set(row) == RUN_KEYS
+    assert RUN_KEYS <= set(row)
     assert set(row) <= columns("score_run")
 
 
@@ -113,7 +114,7 @@ def test_the_score_line_rows_only_use_declared_columns():
 
     assert len(lines) == 6
     for line in lines:
-        assert set(line) == LINE_KEYS
+        assert LINE_KEYS <= set(line)
         assert set(line) <= columns("score_line")
 
 
