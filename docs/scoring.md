@@ -56,7 +56,13 @@ est une erreur de donnée, pas un plafond.
 La médiane est calculée **avant** l'étape de score, par une fonction pure séparée
 (`docs/engagement.md`). L'étape de score ne reçoit que la valeur médiane, les
 abonnés et le type de mesure ; elle ne voit ni la moyenne, ni les publications
-individuelles.
+individuelles. Le type est `VIEWS_PER_ITEM` partout sauf sur Twitch, où il vaut
+`CONCURRENT_VIEWERS` ; un type qui ne correspond pas à la plateforme rend la
+ligne inconnue (`measure_kind_mismatch`) — on ne compare jamais des vues à des
+spectateurs simultanés. Le passage d'un résultat de mesure au score se fait par
+`apply_engagement_measure` : elle reporte la médiane, l'échantillon, l'instantané,
+le type, les drapeaux et la référence du run ; une mesure `UNKNOWN` efface la
+médiane.
 
 ### Acheteurs
 
@@ -84,8 +90,8 @@ Une fiche de score, avec, pour être auditable :
   "lines": [
     {"criterion": "focus_gaming", "status": "measured", "measure": "60 %", "points": "18.75"},
     {"criterion": "engagement", "status": "measured", "measure": "8 %",
-     "measure_kind": "median_views", "window": "2026-10-17..2026-11-16",
-     "sample_size": 24, "points": "20"},
+     "measure_kind": "VIEWS_PER_ITEM", "measure_ref": "6f1c...",
+     "window": "2026-10-17..2026-11-16", "sample_size": 24, "points": "20"},
     {"criterion": "activity", "status": "measured", "measure": "7", "points": "13.125"},
     {"criterion": "ad_ready", "status": "measured", "measure": "one_of_two", "points": "8"},
     {"criterion": "platform_safety", "status": "measured", "measure": "vk_video", "points": "10"},
@@ -99,12 +105,14 @@ Une fiche de score, avec, pour être auditable :
 }
 ```
 
-Trois choses à retenir de cette forme :
+Quatre choses à retenir de cette forme :
 
 - `total_exact` et `score` coexistent : le second est la troncature du premier.
   Un 69,875 se lit 69,875 et non « 69 ».
 - `bounds` donne l'intervalle de S-03 quand une mesure manque ; quand tout est
   mesuré, les deux bornes sont égales.
+- `measure_ref` relie la ligne d'engagement à son run de mesure ;
+  `to_score_lines()` l'écrit dans `engagement_measure_run_id`.
 - `proposal` n'est pas un statut définitif : le parcours applique ensuite
   l'éligibilité (H-04), et une revue humaine peut toujours revenir dessus.
 

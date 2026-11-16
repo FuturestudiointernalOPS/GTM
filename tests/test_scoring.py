@@ -6,6 +6,7 @@ the test.
 """
 from fractions import Fraction
 
+from processing.engagement import CONCURRENT_VIEWERS, VIEWS_PER_ITEM, EngagementMeasure
 from processing.scoring import (
     ENGAGEMENT_THRESHOLDS,
     OUT_OF_PROFILE,
@@ -15,6 +16,7 @@ from processing.scoring import (
     TO_REVIEW,
     BuyerMeasures,
     CreatorMeasures,
+    apply_engagement_measure,
     in_creator_profile,
     score_buyer,
     score_creator,
@@ -52,6 +54,26 @@ def buyer(**overrides) -> BuyerMeasures:
     }
     values.update(overrides)
     return BuyerMeasures(**values)
+
+
+def measure(**overrides) -> EngagementMeasure:
+    values = {
+        "status": "MEASURED",
+        "measure_kind": VIEWS_PER_ITEM,
+        "statistic": "MEDIAN",
+        "value": Fraction(2_000),
+        "sample_size": 30,
+        "unreadable_count": 0,
+        "window_start": "2026-10-11T00:00:00+00:00",
+        "window_end": "2026-11-10T00:00:00+00:00",
+        "window_mode": "TIME",
+        "flags": (),
+        "read_at": "2026-11-10T00:00:00+00:00",
+        "sample_hash": "hash",
+        "reason": None,
+    }
+    values.update(overrides)
+    return EngagementMeasure(**values)
 
 
 def line(result, criterion):
@@ -397,3 +419,87 @@ def test_both_tables_still_sum_to_one_hundred():
 
     assert creator_maxima == 100
     assert buyer_maxima == 100
+
+
+# --- measure bridge ---------------------------------------------------------
+
+
+def test_an_applied_measure_carries_its_run_flags_and_ref():
+    applied = apply_engagement_measure(
+        creator(),
+        measure(value=Fraction(4_000), sample_size=6, flags=("DISPERSION",)),
+        measure_run_id="run-42",
+    )
+
+    result = score_creator(applied)
+    engagement = line(result, "engagement")
+
+    assert engagement.points == 25
+    assert engagement.measure_ref == "run-42"
+    assert engagement.flags == ("WEAK_SAMPLE", "DISPERSION")
+    assert result.to_dict()["lines"][1]["measure_ref"] == "run-42"
+    assert result.to_score_lines()[1]["engagement_measure_run_id"] == "run-42"
+
+
+def test_a_measure_kind_mismatch_is_unknown():
+    applied = apply_engagement_measure(
+        creator(platform="twitch"),
+        measure(value=Fraction(1_200), measure_kind=VIEWS_PER_ITEM),
+        measure_run_id="run-7",
+    )
+
+    engagement = line(score_creator(applied), "engagement")
+
+    assert engagement.status == "UNKNOWN"
+    assert engagement.reason == "measure_kind_mismatch"
+    assert engagement.measure_ref == "run-7"
+
+
+def test_a_concurrent_viewer_measure_scores_twitch():
+    applied = apply_engagement_measure(
+        creator(platform="twitch", followers=100_000),
+        measure(
+            value=Fraction(1_200),
+            measure_kind=CONCURRENT_VIEWERS,
+            sample_size=10,
+        ),
+        measure_run_id="run-8",
+    )
+
+    assert line(score_creator(applied), "engagement").points == 6
+
+
+def test_an_unknown_measure_keeps_its_reason_and_ref():
+    applied = apply_engagement_measure(
+        creator(median_views=99_999),
+        measure(
+            status="UNKNOWN",
+            value=None,
+            sample_size=4,
+            flags=("WINDOW_EXTENDED",),
+            reason="sample_too_small",
+        ),
+        measure_run_id="run-9",
+    )
+
+    result = score_creator(applied)
+    engagement = line(result, "engagement")
+
+    assert applied.median_views is None  # no stale median survives
+    assert engagement.status == "UNKNOWN"
+    assert engagement.reason == "sample_too_small"
+    assert engagement.measure_ref == "run-9"
+    assert result.proposal == TO_REVIEW
+
+
+def test_measure_flags_are_merged_without_duplicates():
+    applied = apply_engagement_measure(
+        creator(),
+        measure(sample_size=7, flags=("WEAK_SAMPLE", "DISPERSION")),
+        measure_run_id="run-10",
+    )
+
+    assert line(score_creator(applied), "engagement").flags == (
+        "WEAK_SAMPLE",
+        "DISPERSION",
+    )

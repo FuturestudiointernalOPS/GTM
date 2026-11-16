@@ -267,8 +267,8 @@ Jalons indicatifs, alignés sur le calendrier du cadrage : E0 et E1 avant la
 semaine 5 (premiers scores) ; E2 et E3 avant P1 ; E4 et E5 avant le pilote de la
 semaine 8 ; E6 pendant le pilote ; E7 avant la clôture.
 
-État au 16 novembre 2026 : **E0 à E3 sont appliqués côté code**. La recette
-manuelle de 10 créateurs par plateforme reste à exécuter ; E4 à E7 restent à
+État au 16 novembre 2026 : **E0 à E4 sont appliqués côté code**. La recette
+manuelle de 10 créateurs par plateforme reste à exécuter ; E5 à E7 restent à
 faire.
 
 ### E0 — Décision
@@ -327,10 +327,14 @@ La traduction est faite par `integrations/engagement_collectors.py` :
 
 ### E4 — Score
 
-- le score reçoit `engagement_value`, `engagement_measure`,
-  `engagement_sample_size` et `followers` ;
+- `apply_engagement_measure` reporte la médiane, l'échantillon, l'instantané, le
+  type, les drapeaux et la référence du run ; une mesure `UNKNOWN` efface la
+  médiane ;
+- le type de mesure est contrôlé par plateforme : `VIEWS_PER_ITEM` partout,
+  `CONCURRENT_VIEWERS` sur Twitch ; un mélange rend la ligne inconnue ;
 - le seuil dépend de la plateforme : 20, 10, 5, 5, 10 ;
-- la ligne d'engagement référence `engagement_measure_run` ;
+- la ligne d'engagement référence `engagement_measure_run` (`measure_ref`, puis
+  `engagement_measure_run_id` dans `to_score_lines()`) ;
 - les cas V1 à V14 et M1 à M10 passent ;
 - la frontière 69,875 / 70 ne bouge pas.
 

@@ -22,7 +22,11 @@ from processing.engagement import (
     EngagementProfile,
     measure_engagement,
 )
-from processing.scoring import CreatorMeasures, score_creator
+from processing.scoring import (
+    CreatorMeasures,
+    apply_engagement_measure,
+    score_creator,
+)
 
 READ = "2026-11-10T12:00:00+00:00"
 
@@ -66,12 +70,9 @@ def items(count, *, start=1, **kwargs):
 
 def engagement_points(measure, platform, followers=100_000):
     result = score_creator(
-        CreatorMeasures(
-            median_views=measure.value,
-            followers=followers,
-            engagement_read_at=measure.read_at,
-            engagement_sample=measure.sample_size,
-            platform=platform,
+        apply_engagement_measure(
+            CreatorMeasures(followers=followers, platform=platform),
+            measure,
         )
     )
     return next(line for line in result.lines if line.criterion == "engagement").points

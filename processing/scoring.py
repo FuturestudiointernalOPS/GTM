@@ -16,6 +16,12 @@ from decimal import Decimal
 from fractions import Fraction
 from math import floor
 
+from processing.engagement import (
+    CONCURRENT_VIEWERS,
+    VIEWS_PER_ITEM,
+    EngagementMeasure,
+)
+
 CRITERIA_VERSION = "1.4"
 
 THRESHOLD = 70
@@ -52,6 +58,15 @@ ENGAGEMENT_THRESHOLDS = {
     "youtube": Fraction(10),
 }
 
+# A platform has one unit: live concurrency on Twitch, item views elsewhere.
+ENGAGEMENT_MEASURE_KINDS = {
+    "telegram": VIEWS_PER_ITEM,
+    "vk_video": VIEWS_PER_ITEM,
+    "twitch": CONCURRENT_VIEWERS,
+    "rutube": VIEWS_PER_ITEM,
+    "youtube": VIEWS_PER_ITEM,
+}
+
 # Platform safety ("sûreté de la plateforme"), in points (§5.3).
 PLATFORM_SAFETY = {
     "vk_video": 10,
@@ -86,6 +101,7 @@ class ScoreLine:
     measure: str | None = None
     reason: str | None = None
     flags: tuple[str, ...] = ()
+    measure_ref: str | None = None  # e.g. the engagement_measure_run id
 
     @property
     def status(self) -> str:
@@ -151,6 +167,7 @@ class ScoreResult:
                     "points": _exact(line.points),
                     "flags": list(line.flags),
                     "reason": line.reason,
+                    "measure_ref": line.measure_ref,
                 }
                 for line in self.lines
             ],
@@ -191,6 +208,9 @@ class ScoreResult:
                 "points_max": line.maximum,
                 "blocking": line.blocking,
                 "reason": line.reason or _line_reason(line),
+                "engagement_measure_run_id": (
+                    line.measure_ref if line.criterion == "engagement" else None
+                ),
             }
             for line in self.lines
         ]
@@ -210,6 +230,10 @@ class CreatorMeasures:
     followers: int | None = None
     engagement_read_at: str | None = None  # one snapshot for views and followers
     engagement_sample: int | None = None  # readable items behind the median
+    engagement_measure_kind: str | None = None  # VIEWS_PER_ITEM / CONCURRENT_VIEWERS
+    engagement_measure_run_id: str | None = None  # engagement_measure_run reference
+    engagement_flags: tuple[str, ...] = ()
+    engagement_reason: str | None = None  # diagnostic from the measure step
     published_last_30_days: int | None = None
     ad_contact: bool | None = None  # contact or rate card in bio
     past_labeled_ads: bool | None = None
@@ -261,6 +285,31 @@ def score_creator(
         _audience_fit(measures),
     )
     return _result(lines, threshold)
+
+
+def apply_engagement_measure(
+    measures: CreatorMeasures,
+    measure: EngagementMeasure,
+    *,
+    measure_run_id: str | None = None,
+) -> CreatorMeasures:
+    """Attach a measure result to the creator criteria, without re-reading it.
+
+    The score receives the median, the sample size, the snapshot and the
+    diagnostic flags; it never sees individual publications. A measure that is
+    not ``MEASURED`` clears the median, so the line stays unknown even when the
+    sample had readable items.
+    """
+    return replace(
+        measures,
+        median_views=measure.value if measure.status == MEASURED else None,
+        engagement_read_at=measure.read_at,
+        engagement_sample=measure.sample_size,
+        engagement_measure_kind=measure.measure_kind,
+        engagement_measure_run_id=measure_run_id,
+        engagement_flags=measure.flags,
+        engagement_reason=measure.reason,
+    )
 
 
 def score_buyer(measures: BuyerMeasures, *, threshold: int = THRESHOLD) -> ScoreResult:
@@ -337,29 +386,46 @@ def _focus_gaming(measures: CreatorMeasures) -> ScoreLine:
 
 def _engagement(measures: CreatorMeasures) -> ScoreLine:
     base = {"criterion": "engagement", "maximum": 25, "blocking": True}
-    if measures.median_views is None or measures.followers is None:
-        return _unknown(**base, reason="missing")
+    ref = {"measure_ref": measures.engagement_measure_run_id}
 
-    threshold_percent = ENGAGEMENT_THRESHOLDS.get(_platform_key(measures.platform))
+    if measures.median_views is None:
+        if measures.engagement_reason:
+            return _unknown(**base, reason=measures.engagement_reason, **ref)
+        return _unknown(**base, reason="missing", **ref)
+    if measures.followers is None:
+        return _unknown(**base, reason="missing", **ref)
+
+    platform = _platform_key(measures.platform)
+    threshold_percent = ENGAGEMENT_THRESHOLDS.get(platform)
     if threshold_percent is None:
-        return _unknown(**base, reason="platform_without_threshold")
+        return _unknown(**base, reason="platform_without_threshold", **ref)
+
+    expected_kind = ENGAGEMENT_MEASURE_KINDS.get(platform)
+    if (
+        measures.engagement_measure_kind
+        and expected_kind
+        and measures.engagement_measure_kind != expected_kind
+    ):
+        return _unknown(**base, reason="measure_kind_mismatch", **ref)
+
     if measures.followers <= 0:
-        return _unknown(**base, reason="no_denominator")
+        return _unknown(**base, reason="no_denominator", **ref)
     if not measures.engagement_read_at:
         # M-03: views and followers come from one snapshot, with one timestamp.
-        return _unknown(**base, reason="snapshot_missing")
+        return _unknown(**base, reason="snapshot_missing", **ref)
     sample = measures.engagement_sample
     if sample is None or sample < ENGAGEMENT_MIN_SAMPLE:
-        return _unknown(**base, reason="sample_too_small")
+        return _unknown(**base, reason="sample_too_small", **ref)
     if measures.median_views < 0:
-        return _unknown(**base, reason="out_of_domain")
+        return _unknown(**base, reason="out_of_domain", **ref)
 
     ratio = Fraction(measures.median_views) * 100 / measures.followers
     return _measured(
         **base,
         points=_ratio_points(ratio, threshold_percent, 25),
         measure=f"{_number(ratio)} % sur un seuil de {_number(threshold_percent)} %",
-        flags=("WEAK_SAMPLE",) if sample < ENGAGEMENT_FULL_SAMPLE else (),
+        flags=_engagement_flags(measures, sample),
+        measure_ref=measures.engagement_measure_run_id,
     )
 
 
@@ -496,6 +562,15 @@ def _ratio_points(measure: Fraction, threshold: Fraction, maximum: int) -> Fract
     return Fraction(maximum) * min(Fraction(1), Fraction(measure) / threshold)
 
 
+def _engagement_flags(
+    measures: CreatorMeasures, sample: int
+) -> tuple[str, ...]:
+    flags = list(measures.engagement_flags)
+    if sample < ENGAGEMENT_FULL_SAMPLE and "WEAK_SAMPLE" not in flags:
+        flags.insert(0, "WEAK_SAMPLE")
+    return tuple(flags)
+
+
 def _measured(
     *,
     criterion: str,
@@ -504,6 +579,7 @@ def _measured(
     points: Fraction,
     measure: str,
     flags: tuple[str, ...] = (),
+    measure_ref: str | None = None,
 ) -> ScoreLine:
     if not 0 <= points <= maximum:
         raise ValueError(f"{criterion}: {points} is outside 0..{maximum}")
@@ -514,17 +590,24 @@ def _measured(
         points=points,
         measure=measure,
         flags=flags,
+        measure_ref=measure_ref,
     )
 
 
 def _unknown(
-    *, criterion: str, maximum: int, blocking: bool, reason: str
+    *,
+    criterion: str,
+    maximum: int,
+    blocking: bool,
+    reason: str,
+    measure_ref: str | None = None,
 ) -> ScoreLine:
     return ScoreLine(
         criterion=criterion,
         maximum=maximum,
         blocking=blocking,
         reason=reason,
+        measure_ref=measure_ref,
     )
 
 
