@@ -156,6 +156,45 @@ class ScoreResult:
             ],
         }
 
+    def to_score_run(self) -> dict | None:
+        """The ``score_run`` row this result writes, or None when nothing was scored.
+
+        A record rejected by an elimination, or outside the profile, has no
+        measured score, so there is no run to store: the decision belongs to the
+        workflow event, not to a score of zero.
+        """
+        if self.score is None:
+            return None
+        return {
+            "criteria_version": self.criteria_version,
+            "score": self.score,
+            "total_exact": _exact(self.total_exact),
+            "incomplete": self.incomplete,
+            "bounds_lower": _exact(self.lower_bound),
+            "bounds_upper": _exact(self.upper_bound),
+            "proposal": self.proposal,
+        }
+
+    def to_score_lines(self) -> list[dict]:
+        """The ``score_line`` rows, one per criterion, as the schema expects.
+
+        An unmeasured line carries no points; the schema forbids an empty value,
+        so it stores ``0`` with the status ``UNKNOWN`` and a reason. The status,
+        never the number, is what says the points were not earned by a zero.
+        """
+        return [
+            {
+                "criterion_code": line.criterion,
+                "measure": line.measure,
+                "status": line.status,
+                "points_exact": _exact(line.points) if line.points is not None else "0",
+                "points_max": line.maximum,
+                "blocking": line.blocking,
+                "reason": line.reason or _line_reason(line),
+            }
+            for line in self.lines
+        ]
+
 
 @dataclass(frozen=True)
 class CreatorMeasures:
@@ -503,6 +542,17 @@ def _number(value: Fraction) -> str:
     if value.denominator == 1:
         return str(value.numerator)
     return f"{float(value):.2f}".rstrip("0").rstrip(".")
+
+
+def _line_reason(line: ScoreLine) -> str:
+    """A readable reason for a measured line (Q-06)."""
+    if line.points is None:
+        return "mesure inconnue"
+    if line.points == 0:
+        return "aucun point"
+    if line.points >= line.maximum:
+        return "seuil de points complets atteint"
+    return "prorata sous le seuil"
 
 
 def _exact(value: Fraction | None) -> str | None:
