@@ -394,6 +394,21 @@ ON CONFLICT (version) DO UPDATE SET
     activated_at = COALESCE(criteria_version.activated_at, now()),
     retired_at = NULL;
 
+-- Les éliminations de la 1.4 : E-B-05 est retirée (le critère « vend aux
+-- joueurs » reste à 20 points), E-C-05 est ajoutée (part gaming mesurée à zéro).
+-- La 1.3 garde sa définition d'origine.
+UPDATE criteria_version
+SET definition = jsonb_set(
+        jsonb_set(
+            definition,
+            '{creator,eliminatory}',
+            '["E-C-01","E-C-02","E-C-03","E-C-04","E-C-05"]'::jsonb
+        ),
+        '{buyer,eliminatory}',
+        '["E-B-01","E-B-02","E-B-03","E-B-04"]'::jsonb
+    )
+WHERE version = '1.4';
+
 -- ---------------------------------------------------------------------------
 -- Plateformes — liste RKN du 19 mars 2026
 -- ---------------------------------------------------------------------------
