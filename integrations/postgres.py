@@ -14,8 +14,41 @@ writes nothing either, because no measure run exists for it.
 from decimal import Decimal
 from fractions import Fraction
 
+from config import settings
 from processing.engagement import MEASURED, EngagementMeasure
 from processing.scoring import CRITERIA_VERSION, ScoreResult
+
+
+class PostgresNotConfigured(RuntimeError):
+    """The connection cannot be opened: no driver, or no address."""
+
+
+def is_configured() -> bool:
+    """True when an address is set. The driver is only needed to connect."""
+    return bool(settings.DATABASE_URL)
+
+
+def connect(dsn: str | None = None, *, driver=None):
+    """Open a connection, importing the driver here and nowhere else.
+
+    The driver is a parameter so tests need no PostgreSQL client, and so the
+    deployment can pin whichever one it installs. Everything else in this module
+    only needs an object exposing ``cursor()``.
+    """
+    if driver is None:
+        try:
+            import psycopg as driver
+        except ImportError as error:
+            raise PostgresNotConfigured(
+                "psycopg is not installed: add psycopg[binary] to the environment"
+            ) from error
+
+    target = dsn or settings.DATABASE_URL
+    if not target:
+        raise PostgresNotConfigured(
+            "DATABASE_URL is not set: add it to the .env file"
+        )
+    return driver.connect(target)
 
 INSERT_MEASURE = """
 INSERT INTO engagement_measure_run (

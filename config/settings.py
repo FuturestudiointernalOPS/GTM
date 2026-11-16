@@ -26,3 +26,8 @@ BASEROW_URL = optional("BASEROW_URL")
 BASEROW_TOKEN = optional("BASEROW_TOKEN")
 BASEROW_DATABASE_ID = optional("BASEROW_DATABASE_ID")
 BASEROW_AUTH_SCHEME = optional("BASEROW_AUTH_SCHEME", "JWT")
+
+# PostgreSQL: the critical data (facts, scores, eligibility). Empty means "not
+# configured": the connection factory refuses with a clear message instead of
+# failing at the network level.
+DATABASE_URL = optional("DATABASE_URL")

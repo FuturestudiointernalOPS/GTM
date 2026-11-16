@@ -45,6 +45,12 @@ exa-py==2.28.0
 # Structured extraction from public pages (site content, contact pages).
 apify-client==3.5.0
 
+# --- Database -------------------------------------------------------------
+# PostgreSQL client for the critical data: facts, scores, eligibility. Imported
+# only by the connection factory, so the rest of the code stays driver-agnostic
+# and can be tested against a fake connection.
+psycopg[binary]==3.2.3
+
 # --- Matching and pages ---------------------------------------------------
 # Name comparison for deduplication and sanctions screening: tolerates
 # Cyrillic/Latin spelling variants, legal-form suffixes and small typos.

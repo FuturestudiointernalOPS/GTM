@@ -8,10 +8,16 @@ from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
 
+import pytest
+
+from config import settings
 from integrations.postgres import (
     INSERT_LINE,
     INSERT_MEASURE,
     INSERT_RUN,
+    PostgresNotConfigured,
+    connect,
+    is_configured,
     write_measure,
     write_score,
 )
@@ -212,3 +218,46 @@ def test_a_measure_without_kind_writes_nothing():
 
     assert measure_id is None
     assert connection.log == []
+
+
+# --- the connection factory -------------------------------------------------
+
+
+class FakeDriver:
+    def __init__(self):
+        self.dsn = None
+
+    def connect(self, dsn):
+        self.dsn = dsn
+        return "connection"
+
+
+def test_connect_uses_the_given_address():
+    driver = FakeDriver()
+
+    assert connect("postgresql://db", driver=driver) == "connection"
+    assert driver.dsn == "postgresql://db"
+
+
+def test_connect_reads_the_setting(monkeypatch):
+    monkeypatch.setattr(settings, "DATABASE_URL", "postgresql://from-env")
+    driver = FakeDriver()
+
+    connect(driver=driver)
+
+    assert driver.dsn == "postgresql://from-env"
+
+
+def test_connect_without_address_refuses(monkeypatch):
+    monkeypatch.setattr(settings, "DATABASE_URL", "")
+
+    with pytest.raises(PostgresNotConfigured):
+        connect(driver=FakeDriver())
+
+
+def test_is_configured_follows_the_setting(monkeypatch):
+    monkeypatch.setattr(settings, "DATABASE_URL", "")
+    assert is_configured() is False
+
+    monkeypatch.setattr(settings, "DATABASE_URL", "postgresql://x")
+    assert is_configured() is True

@@ -96,7 +96,8 @@ L'ordre d'écriture compte : la mesure est écrite d'abord, son identifiant est
 rattaché à la ligne d'engagement, puis le score et ses lignes sont écrits. Une
 fiche rejetée n'écrit rien — c'est une décision, pas un score de zéro. Le module
 d'écriture ne se connecte pas lui-même : l'appelant fournit la connexion et ouvre
-la transaction, ce qui rend le tout testable sans base.
+la transaction, ce qui rend le tout testable sans base. Pour la production,
+`connect()` lit `DATABASE_URL` et n'importe le pilote qu'à ce moment-là.
 
 ## Ce qui reste à faire
 
