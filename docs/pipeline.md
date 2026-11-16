@@ -281,11 +281,14 @@ Deux garde-fous sont dans le code, pas dans la discipline de l'opérateur :
 - une fiche **sans score** ne peut pas être déclarée éligible ;
 - une fiche **rejetée** non plus.
 
-Ce qui manque encore : le **client de recherche**. Rien n'interroge Gosuslugi,
-les listes de sanctions ou un registre de licences. La comparaison d'une
-recherche avec une page est écrite et testée (`processing/rkn.py`) : un même nom
-sur une autre URL est un `MISMATCH`, un service muet est `PENDING`, jamais une
-absence — mais la recherche elle-même est injectée, et son client reste à faire.
+Ce qui manque encore : **l'adaptation au formulaire réel**. Le client existe
+(`integrations/rkn_search.py`) et il est configuré, jamais codé en dur —
+`RKN_SEARCH_URL`, `RKN_QUERY_FIELD`, `RKN_ALLOWED_DOMAINS` —, mais le balisage du
+service n'a pas encore été confronté à une vraie réponse. La comparaison d'une
+recherche avec une page, elle, est testée : un même nom sur une autre URL est un
+`MISMATCH`, un service muet est `PENDING`, jamais une absence, et une réponse
+d'un autre domaine est une usurpation, pas une réponse. Les listes de sanctions et
+les registres de licences ne sont pas interrogés du tout.
 
 Deux chemins humains complètent l'étape : `write_review_decision` clôt une revue
 avec un verdict, un auteur et une justification, sans écrire de contrôle ;
@@ -305,11 +308,11 @@ score : une fiche sans score n'est éligible à rien.
    (`integrations/record_store.py`), le run complet est branché
    (`workflows/postgres_run.py`) et la table d'éligibilité est implémentée
    (`processing/eligibility.py`, `docs/eligibility.md`), avec la comparaison au
-   registre (`processing/rkn.py`) et les deux issues humaines (revue, dérogation),
-   testés contre une connexion simulée. Restent la calibration des seuils Rutube
-   et YouTube, le cas VK Video Live seul, le **client** de recherche du registre
-   et des sanctions, l'exécution réelle contre un serveur et l'extraction réelle
-   des faits qui alimente la chaîne.
+   registre (`processing/rkn.py`), son client (`integrations/rkn_search.py`) et
+   les deux issues humaines (revue, dérogation), testés contre une connexion
+   simulée. Restent la calibration des seuils Rutube et YouTube, le cas VK Video
+   Live seul, l'adaptation du client au formulaire réel, l'exécution réelle contre
+   un serveur et l'extraction réelle des faits qui alimente la chaîne.
 3. **Baserow** — remplacer le fichier JSON par la vraie base, sans changer le
    contrat `contains_url` / `contains_handle` / `add`.
 4. **Copilote analyste** — optionnel, en lecture seule, avec budget et liste

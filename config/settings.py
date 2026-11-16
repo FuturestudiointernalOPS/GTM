@@ -31,3 +31,12 @@ BASEROW_AUTH_SCHEME = optional("BASEROW_AUTH_SCHEME", "JWT")
 # configured": the connection factory refuses with a clear message instead of
 # failing at the network level.
 DATABASE_URL = optional("DATABASE_URL")
+
+# Roskomnadzor registry (creators). The registry is a public web form, not an
+# API: the endpoint and the name of the field carrying the query are
+# configuration, and an empty value means "not configured". The allowed domains
+# are the official host names; a response from another host is a lookalike
+# (V-09), never a registry answer.
+RKN_SEARCH_URL = optional("RKN_SEARCH_URL")
+RKN_QUERY_FIELD = optional("RKN_QUERY_FIELD")
+RKN_ALLOWED_DOMAINS = optional("RKN_ALLOWED_DOMAINS")

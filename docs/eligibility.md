@@ -203,6 +203,36 @@ Trois garanties :
 - **un service muet n'est pas une absence** : `PENDING`, jamais `NOT_FOUND`.
   Accuser une page parce qu'un site était en panne serait une faute.
 
+### Le client de recherche
+
+`integrations/rkn_search.py` interroge le formulaire public. Trois réglages,
+jamais codés en dur — le formulaire peut changer sous nous :
+
+| Réglage | Rôle |
+|---|---|
+| `RKN_SEARCH_URL` | adresse du formulaire (vide = non configuré) |
+| `RKN_QUERY_FIELD` | nom du champ qui porte l'adresse de la page |
+| `RKN_ALLOWED_DOMAINS` | domaines officiels, séparés par des virgules |
+
+L'appel est `check(page_url, fetch=..., parser=...)` : il cherche, lit les
+lignes, compare, et rend un `Check` directement utilisable comme
+`rkn_status`/`rkn_reasons`. `fetch` et `parser` sont injectables, donc les tests
+ne touchent pas le réseau.
+
+Quatre choix qui protègent la décision :
+
+- **une réponse incomprise est `PENDING`.** Si la page ne contient aucun tableau
+de résultats, le formulaire a probablement changé : on ne conclut pas à une
+absence. Un tableau vide, lui, est un vrai « aucun résultat » ;
+- **un formulaire refusé (4xx) est `PENDING`**, pas une absence. Un 429 ou un 5xx
+est réessayé trois fois ;
+- **une réponse d'un autre domaine que les domaines autorisés est une
+  usurpation** (`LOOKALIKE_DOMAIN` → `MANUAL_REVIEW`), pas une réponse ;
+- **le lecteur de lignes est générique** : il garde tous les liens d'une ligne,
+parce que l'adresse de la page n'est pas forcément dans la colonne qu'un dev
+choisirait. Le nom vient du lien de fiche, l'identifiant technique du dernier
+segment numérique de cette fiche.
+
 ## 9. Sortir d'une revue, et déroger
 
 Deux chemins humains, distincts d'un contrôle automatique :
@@ -220,12 +250,14 @@ qu'il s'agit d'une dérogation, par qui, jusqu'à quand.
 
 ## 10. Ce qui n'est pas encore fait
 
-1. **Le client de recherche.** Rien n'interroge encore Gosuslugi : la comparaison
-   est prête, la recherche est injectée (`processing/rkn.py`). Les listes de
-   sanctions et les registres de licences ne sont pas non plus interrogés.
+1. **L'adaptation au formulaire réel.** Le client, la lecture des lignes et la
+   comparaison existent et sont testés, mais le balisage du service n'a pas été
+   confronté à une vraie réponse : il faudra un premier passage réel pour ajuster
+   les sélecteurs et les noms de champs. Les listes de sanctions et les registres
+   de licences ne sont pas interrogés du tout.
 2. **La catégorie exclue (E-B-02)** et **la publicité sans étiquette (E-B-03)**
    ne sont pas des contrôles de cette étape : la première relève d'un fait à
    établir, la seconde de la collecte.
-3. **Le domaine officiel du registre.** Un domaine qui imite le service officiel
-   devrait produire `MANUAL_REVIEW` (V-09). Il manque la liste des domaines
-   autorisés pour le faire sans invention.
+3. **Le domaine officiel du registre.** Il est maintenant configuré
+   (`RKN_ALLOWED_DOMAINS`) et une réponse d'un autre domaine part en revue ; il
+   reste à confirmer la liste elle-même auprès de la source.
