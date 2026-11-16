@@ -624,6 +624,11 @@ erDiagram
 - `transition_record()` est le point d'entrée unique pour changer un statut :
   il écrit l'événement puis met à jour la fiche. Le code ne doit pas faire
   d'`UPDATE` direct de `workflow_status`.
+- Un score écrit les colonnes de score (`score`, `score_total_exact`,
+  `score_incomplete`, `score_proposal`) mais s'arrête au statut `SCORED` :
+  `PRESELECTED` et `QUALIFIED` supposent le contrôle d'éligibilité, et un score
+  ne remplace jamais ce contrôle (H-04). Un rejet écrit `REJECTED` ; un hors
+  profil aussi, car `score_proposal` n'a pas de valeur pour lui.
 
 ### 5.6 Vues de contrat
 

@@ -12,10 +12,11 @@ Transaction boundaries, and why they are here:
 * each score therefore starts with a commit of that pending work, then writes in
   its own transaction. A failed write rolls back one score, not the whole run,
   and a failed statement cannot abort the writes that follow;
-* a rejected record produces no score run: the score transaction is rolled back.
-  Its fiche and its measure stay — a fiche is an identity, a measure is a fact,
-  and neither is the decision. Forgetting a rejected creator is how the next run
-  would collect and score it again.
+* a rejected record produces no score run, but it does produce a decision: the
+  fiche moves to REJECTED through ``transition_record()``. Its fiche and its
+  measure stay — a fiche is an identity, a measure is a fact, and neither is the
+  decision. Forgetting a rejected creator is how the next run would collect and
+  score it again.
 
 The caller keeps the connection (and closes it); this module never connects.
 """
@@ -43,7 +44,7 @@ def record_sinks(connection, *, computed_by: str = "weekly-run"):
 
     def write(record: RecordScore):
         # Persist the fiches and measures created while scoring, then give the
-        # score its own transaction.
+        # score and its decision their own transaction.
         connection.commit()
         try:
             run_id = postgres.write_score(
@@ -53,13 +54,15 @@ def record_sinks(connection, *, computed_by: str = "weekly-run"):
                 computed_by=computed_by,
                 notes="; ".join(record.notes) or None,
             )
+            postgres.write_decision(
+                connection,
+                record_id=record.record_id,
+                result=record.result,
+                actor=computed_by,
+            )
         except Exception:
             connection.rollback()
             raise
-
-        if run_id is None:
-            connection.rollback()
-            return None
 
         connection.commit()
         return run_id

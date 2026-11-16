@@ -3,6 +3,7 @@
 No driver and no server: the fake records every statement and its parameters, so
 the column list and the values are checked before they ever reach a database.
 """
+import json
 import re
 from decimal import Decimal
 from fractions import Fraction
@@ -18,11 +19,17 @@ from integrations.postgres import (
     PostgresNotConfigured,
     connect,
     is_configured,
+    write_decision,
     write_measure,
     write_score,
 )
 from processing.engagement import EngagementMeasure
-from processing.scoring import CreatorMeasures, score_creator
+from processing.scoring import (
+    QUALIFIED,
+    CreatorMeasures,
+    ScoreResult,
+    score_creator,
+)
 
 DDL = Path(__file__).resolve().parent.parent / "db" / "postgres" / "001_schema.sql"
 READ = "2026-11-10T12:00:00+00:00"
@@ -217,6 +224,181 @@ def test_a_measure_without_kind_writes_nothing():
     )
 
     assert measure_id is None
+    assert connection.log == []
+
+
+# --- the decision ------------------------------------------------------------
+
+
+class _DecisionCursor:
+    def __init__(self, connection):
+        self._connection = connection
+        self._row = None
+
+    def execute(self, sql, params=()):
+        normalized = " ".join(sql.split())
+        self._connection.log.append((normalized, params))
+        if "SELECT workflow_status, score_proposal FROM record" in normalized:
+            if not self._connection.exists:
+                self._row = None
+            else:
+                self._row = (self._connection.status, self._connection.proposal)
+        elif "SELECT transition_record" in normalized:
+            self._row = ("event-1",)
+        else:
+            self._row = None
+
+    def fetchone(self):
+        return self._row
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class DecisionConnection:
+    def __init__(
+        self, status="NEW", proposal=None, exists=True, run_id="rec-1"
+    ):
+        self.log = []
+        self.status = status
+        self.proposal = proposal
+        self.exists = exists
+        self.run_id = run_id
+
+    def cursor(self):
+        return _DecisionCursor(self)
+
+
+def decision(connection, result, record_id="rec-1"):
+    return write_decision(
+        connection, record_id=record_id, result=result, actor="test"
+    )
+
+
+def transition(connection):
+    return next(
+        (sql, params)
+        for sql, params in connection.log
+        if "SELECT transition_record" in sql
+    )
+
+
+def update(connection):
+    return next(
+        params for sql, params in connection.log if sql.startswith("UPDATE record")
+    )
+
+
+def test_a_preselected_creator_stops_at_scored():
+    connection = DecisionConnection()
+
+    assert decision(connection, score_creator(creator())) == "SCORED"
+
+    _, params = transition(connection)
+    assert params[1] == "SCORED"
+    assert params[2] == "score 79 sur 100 (79.875 exact), seuil 70 : PRESELECTED"
+    assert params[3] == "test"
+
+    payload = json.loads(params[5])
+    assert payload["proposal"] == "PRESELECTED"
+    assert payload["score_exact"] == "79.875"
+    assert payload["bounds"] == ["79.875", "79.875"]
+    assert payload["incomplete"] is False
+
+    assert update(connection) == (
+        79,
+        "79.875",
+        False,
+        "PRESELECTED",
+        "1.4",
+        "rec-1",
+    )
+
+
+def test_the_status_is_changed_through_the_schema_function_only():
+    connection = DecisionConnection()
+
+    decision(connection, score_creator(creator()))
+
+    statements = [sql for sql, _ in connection.log]
+    assert any(sql.startswith("SELECT transition_record") for sql in statements)
+    assert not any("SET workflow_status" in sql for sql in statements)
+
+
+def test_a_rejected_creator_moves_to_rejected_without_a_score():
+    connection = DecisionConnection()
+
+    result = score_creator(creator(gaming_share=Fraction(0)))
+    assert decision(connection, result) == "REJECTED"
+
+    _, params = transition(connection)
+    assert params[1] == "REJECTED"
+    assert params[2] == "score non calculé : no_gaming_content"
+
+    assert update(connection) == (None, None, False, "REJECTED", "1.4", "rec-1")
+
+
+def test_a_creator_out_of_profile_keeps_its_label_in_the_journal():
+    connection = DecisionConnection()
+
+    result = score_creator(creator(followers=1_000))
+    assert result.score is None
+    assert decision(connection, result) == "REJECTED"
+
+    _, params = transition(connection)
+    payload = json.loads(params[5])
+    assert payload["proposal"] == "OUT_OF_PROFILE"
+
+    # score_proposal has no OUT_OF_PROFILE value, so the fiche says REJECTED.
+    assert update(connection)[3] == "REJECTED"
+
+
+def test_a_qualified_buyer_is_stored_as_qualified():
+    connection = DecisionConnection()
+    result = ScoreResult(
+        proposal=QUALIFIED,
+        score=75,
+        total_exact=Fraction(75),
+        lower_bound=Fraction(75),
+        upper_bound=Fraction(75),
+        incomplete=False,
+        lines=(),
+    )
+
+    assert decision(connection, result) == "SCORED"
+
+    assert transition(connection)[1][1] == "SCORED"
+    assert update(connection)[3] == "QUALIFIED"
+
+
+def test_a_rerun_with_the_same_proposal_writes_no_journal_entry():
+    connection = DecisionConnection(status="PRESELECTED", proposal="PRESELECTED")
+
+    assert decision(connection, score_creator(creator())) == "SCORED"
+
+    statements = [sql for sql, _ in connection.log]
+    assert not any("SELECT transition_record" in sql for sql in statements)
+    assert any(sql.startswith("UPDATE record") for sql in statements)
+
+
+def test_a_decision_on_a_missing_record_raises():
+    connection = DecisionConnection(exists=False)
+
+    with pytest.raises(LookupError):
+        decision(connection, score_creator(creator()))
+
+    assert not any(sql.startswith("UPDATE record") for sql, _ in connection.log)
+
+
+def test_a_decision_without_a_record_id_raises():
+    connection = DecisionConnection()
+
+    with pytest.raises(ValueError, match="record id"):
+        decision(connection, score_creator(creator()), record_id=None)
+
     assert connection.log == []
 
 

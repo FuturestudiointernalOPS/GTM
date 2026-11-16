@@ -94,12 +94,11 @@ Les contrats sont `docs/extraction.md`, `docs/enrichment.md`,
 
 L'ordre d'écriture compte : la mesure est écrite d'abord, son identifiant est
 rattaché à la ligne d'engagement, puis le score et ses lignes sont écrits. Une
-fiche rejetée n'écrit pas de score — c'est une décision, pas un score de zéro ;
-sa fiche et sa mesure, elles, sont conservées, sinon le run suivant la
-recollecterait. Le module d'écriture ne se connecte pas lui-même : l'appelant
-fournit la connexion et ouvre la transaction, ce qui rend le tout testable sans
-base. Pour la production, `connect()` lit `DATABASE_URL` et n'importe le pilote
-qu'à ce moment-là.
+fiche rejetée n'écrit pas de score — c'est une décision, pas un score de zéro —
+mais elle écrit sa décision : son statut passe à `REJECTED`. Le module d'écriture
+ne se connecte pas lui-même : l'appelant fournit la connexion et ouvre la
+transaction, ce qui rend le tout testable sans base. Pour la production,
+`connect()` lit `DATABASE_URL` et n'importe le pilote qu'à ce moment-là.
 
 ## La boucle par fiche
 
@@ -219,12 +218,39 @@ les fiches avant d'écrire le premier score :
 |---|---|
 | Notation (fiches, mesures) | une transaction longue, ouverte par l'écriture du premier score |
 | Avant chaque score | `commit` du travail en attente : les fiches et les mesures sont conservées |
-| Score écrit | son propre `commit` |
-| Score refusé ou en erreur | `rollback` du seul score ; le run continue sur une transaction saine |
+| Score et décision écrits | son propre `commit` |
+| Écriture en erreur | `rollback` du seul score ; le run continue sur une transaction saine |
 
 Sans cette coupure, une erreur d'écriture laisserait la transaction avortée et
 ferait échouer tous les scores suivants : c'est le défaut que les tests de
 `tests/test_postgres_run.py` surveillent.
+
+### La décision sur la fiche
+
+Un score ne change pas un statut tout seul : `write_decision` (`integrations/
+postgres.py`) met à jour les colonnes de score et, si la proposition change,
+demande la transition à `transition_record()` — la fonction du schéma qui écrit
+le journal **puis** le statut. Le code ne modifie jamais `workflow_status`
+directement.
+
+| Proposition | Statut écrit | Pourquoi |
+|---|---|---|
+| `PRESELECTED`, `QUALIFIED` | `SCORED` | l'éligibilité réglementaire vient après le score, et H-04 interdit de la sauter |
+| `TO_REVIEW` | `TO_REVIEW` | une mesure bloquante manque |
+| `REJECTED` | `REJECTED` | score sous le seuil, ou exclusion active |
+| `OUT_OF_PROFILE` | `REJECTED` | `score_proposal` n'accepte que quatre valeurs ; le libellé exact reste dans le journal |
+
+Trois choix qui évitent d'abîmer l'historique :
+
+- **la transition n'a lieu que si la proposition change** : rejouer le même score
+  n'écrit pas un deuxième événement, et une fiche déjà auditée ou présélectionnée
+  n'est pas ramenée à `SCORED` par un simple nouveau passage ;
+- **les colonnes de score sont séparées du statut** : un nouveau score peut
+  corriger 79 en 68 sans prétendre que la fiche vient d'arriver ;
+- **la justification est écrite dans le journal** : « score 79 sur 100 (79.875
+  exact), seuil 70 : PRESELECTED », ou « score non calculé : no_gaming_content ».
+  Le payload conserve la proposition brute, les bornes et l'indicateur de mesure
+  incomplète.
 
 ## Ce qui reste à faire
 
@@ -233,12 +259,14 @@ ferait échouer tous les scores suivants : c'est le défaut que les tests de
    prompt définitif et la validation de la sortie réelle du modèle.
 2. **Score et éligibilité déterministes** — le parcours existe en mémoire
    (`workflows/record_flow.py`) et les règles sont fixées (§3.5,
-   `docs/scoring.md`). L'écriture des lignes est prête (`integrations/postgres.py`),
-   les fiches sont créées ou retrouvées (`integrations/record_store.py`) et le run
-   complet est branché (`workflows/postgres_run.py`), testés contre une connexion
-   simulée. Restent la calibration des seuils Rutube et YouTube, le cas VK Video
-   Live seul, l'exécution réelle contre un serveur et l'extraction réelle des
-   faits qui alimente la chaîne.
+   `docs/scoring.md`). L'écriture des lignes et de la décision est prête
+   (`integrations/postgres.py`), les fiches sont créées ou retrouvées
+   (`integrations/record_store.py`) et le run complet est branché
+   (`workflows/postgres_run.py`), testés contre une connexion simulée. Restent la
+   calibration des seuils Rutube et YouTube, le cas VK Video Live seul, le
+   contrôle d'éligibilité qui fait passer `SCORED` à `PRESELECTED`, l'exécution
+   réelle contre un serveur et l'extraction réelle des faits qui alimente la
+   chaîne.
 3. **Baserow** — remplacer le fichier JSON par la vraie base, sans changer le
    contrat `contains_url` / `contains_handle` / `add`.
 4. **Copilote analyste** — optionnel, en lecture seule, avec budget et liste

@@ -23,9 +23,9 @@ class _Cursor:
         self._row = None
 
     def execute(self, sql, params=()):
-        self._connection.log.append((" ".join(sql.split()), params))
-        answers = self._connection._answers
-        self._row = answers.pop(0) if answers else None
+        normalized = " ".join(sql.split())
+        self._connection.log.append((normalized, params))
+        self._row = self._connection.answer(normalized)
 
     def fetchone(self):
         return self._row
@@ -38,14 +38,29 @@ class _Cursor:
 
 
 class FakeConnection:
-    def __init__(self, answers=()):
+    """Answers by statement: a score run, a decision read, a transition."""
+
+    def __init__(self, run_id="run-1", status="NEW", proposal=None):
         self.log = []
         self.commits = 0
         self.rollbacks = 0
-        self._answers = list(answers)
+        self.run_id = run_id
+        self.status = status
+        self.proposal = proposal
 
     def cursor(self):
         return _Cursor(self)
+
+    def answer(self, sql):
+        if "FROM creator_platform_account" in sql:
+            return ("rec-1", "acc-1")
+        if "SELECT workflow_status, score_proposal FROM record" in sql:
+            return (self.status, self.proposal)
+        if "SELECT transition_record" in sql:
+            return ("event-1",)
+        if "RETURNING id" in sql:
+            return (self.run_id,)
+        return None
 
     def commit(self):
         self.commits += 1
@@ -106,7 +121,7 @@ def record(**overrides):
 
 
 def test_the_store_reads_through_the_same_connection():
-    connection = FakeConnection(answers=[("rec-1", "acc-1")])
+    connection = FakeConnection()
     store, _, _ = record_sinks(connection)
 
     keys = store.find_creator(
@@ -131,7 +146,7 @@ def test_a_measure_without_account_writes_nothing():
 
 
 def test_a_measure_is_written_but_not_committed_on_its_own():
-    connection = FakeConnection(answers=[("measure-1",)])
+    connection = FakeConnection(run_id="measure-1")
     _, save_measure, _ = record_sinks(connection)
 
     assert save_measure(measure(), "acc-1") == "measure-1"
@@ -139,31 +154,57 @@ def test_a_measure_is_written_but_not_committed_on_its_own():
     assert connection.commits == 0
 
 
-# --- the score --------------------------------------------------------------
+# --- the score and its decision ---------------------------------------------
 
 
 def test_a_score_commits_the_pending_fiches_then_writes_and_commits():
-    connection = FakeConnection(answers=[("run-1",)])
+    connection = FakeConnection()
     _, _, write = record_sinks(connection)
 
     assert write(record()) == "run-1"
 
     assert connection.commits == 2
     assert connection.rollbacks == 0
-    assert "INSERT INTO score_run" in connection.log[0][0]
-    assert len(connection.log) == 1 + 6
+
+    statements = [sql for sql, _ in connection.log]
+    assert any("INSERT INTO score_run" in sql for sql in statements)
+    assert len([sql for sql in statements if "INSERT INTO score_line" in sql]) == 6
+    assert any("SELECT transition_record" in sql for sql in statements)
+    assert any(sql.startswith("UPDATE record") for sql in statements)
 
 
-def test_a_rejected_record_commits_the_fiche_and_rolls_back_the_score():
+def test_a_rejected_record_keeps_no_score_but_records_the_decision():
     connection = FakeConnection()
     _, _, write = record_sinks(connection)
 
-    assert write(record(result=score_creator(creator(gaming_share=Fraction(0))))) is None
+    rejected = record(result=score_creator(creator(gaming_share=Fraction(0))))
+    assert write(rejected) is None
 
-    # The fiche and the measure are kept; the score is not written at all.
-    assert connection.commits == 1
-    assert connection.rollbacks == 1
-    assert connection.log == []
+    statements = [sql for sql, _ in connection.log]
+    assert not any("score_run" in sql for sql in statements)
+    assert not any("score_line" in sql for sql in statements)
+
+    _, params = next(
+        (sql, params)
+        for sql, params in connection.log
+        if "SELECT transition_record" in sql
+    )
+    assert params[1] == "REJECTED"
+    assert params[2] == "score non calculé : no_gaming_content"
+
+    assert connection.commits == 2
+    assert connection.rollbacks == 0
+
+
+def test_a_rerun_with_the_same_proposal_writes_no_journal_entry():
+    connection = FakeConnection(status="PRESELECTED", proposal="PRESELECTED")
+    _, _, write = record_sinks(connection)
+
+    write(record())
+
+    statements = [sql for sql, _ in connection.log]
+    assert not any("SELECT transition_record" in sql for sql in statements)
+    assert any(sql.startswith("UPDATE record") for sql in statements)
 
 
 def test_a_score_without_fiche_rolls_back_and_says_so():
