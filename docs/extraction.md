@@ -20,6 +20,21 @@ Les clés autorisées sont exactement celles du contrat d'enrichissement (§4 et
 de `docs/enrichment.md`), une liste par filon. Une clé absente de cette liste
 n'a pas le droit d'entrer : c'est une erreur de schéma, pas une donnée de plus.
 
+### Ce que le modèle reçoit et rend
+
+Deux invites fixes, une par filon, portent le contrat : `extract_creator` et
+`extract_buyer`. Elles listent les clés, l'unité de chacune, et la consigne
+« null quand la preuve ne montre pas la valeur ».
+
+La réponse est validée par un schéma strict : une **clé inconnue** fait échouer
+l'extraction au lieu d'entrer dans la fiche, et une clé absente reste nulle. Les
+bornes de valeur ne sont **pas** contrôlées à cette frontière : une part à 180 %
+doit dégrader une seule mesure, pas faire échouer la fiche entière. C'est
+l'enrichissement qui tranche.
+
+Un test vérifie que la liste des champs du schéma est identique à la liste des
+clés du contrat d'enrichissement, pour que les deux ne puissent pas diverger.
+
 ---
 
 ## 2. Sortie
