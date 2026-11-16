@@ -213,6 +213,31 @@ def test_v15_a_non_gaming_buyer_is_scored_not_rejected():
     assert line(result, "sells_to_gamers").points == 0
 
 
+def test_v16_a_creator_with_no_gaming_content_is_excluded():
+    # C-05: 0 % gaming is an elimination, not a missing 25 points.
+    result = score_creator(creator(gaming_share=Fraction(0)))
+
+    assert result.proposal == REJECTED
+    assert result.score is None
+    assert result.lines == ()
+    assert result.reason == "no_gaming_content"
+
+
+def test_an_unknown_gaming_share_is_reviewed_not_excluded():
+    result = score_creator(creator(gaming_share=None))
+
+    assert result.proposal == TO_REVIEW
+    assert result.score is not None
+    assert result.reason is None
+
+
+def test_a_zero_on_too_small_a_sample_is_not_an_exclusion():
+    result = score_creator(creator(gaming_share=Fraction(0), gaming_window=5))
+
+    assert result.proposal == TO_REVIEW
+    assert result.reason is None
+
+
 def test_v12_integrations_are_capped():
     assert line(score_buyer(buyer(creators_paid=3)), "pays_creators").points == 30
 

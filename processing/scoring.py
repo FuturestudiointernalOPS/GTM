@@ -104,6 +104,7 @@ class ScoreResult:
     incomplete: bool
     lines: tuple[ScoreLine, ...]
     criteria_version: str = CRITERIA_VERSION
+    reason: str | None = None  # why a record is not scored (E-C-04, E-C-05)
 
     @classmethod
     def out_of_profile(cls) -> "ScoreResult":
@@ -118,11 +119,26 @@ class ScoreResult:
             lines=(),
         )
 
+    @classmethod
+    def excluded(cls, reason: str) -> "ScoreResult":
+        """An elimination criterion rejects the record before any score (E-C-05)."""
+        return cls(
+            proposal=REJECTED,
+            score=None,
+            total_exact=None,
+            lower_bound=None,
+            upper_bound=None,
+            incomplete=False,
+            lines=(),
+            reason=reason,
+        )
+
     def to_dict(self) -> dict:
         """The score record, in the shape documented in scoring.md §3."""
         return {
             "criteria_version": self.criteria_version,
             "proposal": self.proposal,
+            "reason": self.reason,
             "score": self.score,
             "total_exact": _exact(self.total_exact),
             "incomplete": self.incomplete,
@@ -192,8 +208,13 @@ def score_creator(
     if not in_creator_profile(measures.followers):
         return ScoreResult.out_of_profile()
 
+    focus = _focus_gaming(measures)
+    if focus.points == 0:
+        # C-05: no gaming content is an exclusion, not a weak score.
+        return ScoreResult.excluded("no_gaming_content")
+
     lines = (
-        _focus_gaming(measures),
+        focus,
         _engagement(measures),
         _activity(measures),
         _ad_ready(measures),
