@@ -30,7 +30,7 @@ def test_missing_evidence_flags_only_asserted_claims():
     ledger = EvidenceLedger()
     ledger.add("followers", 42_000, _source())
 
-    claims = {"followers": 42_000, "gaming_share": 0.8, "language": None}
+    claims = {"followers": 42_000, "gaming_share": 60, "language": None}
 
     # language is None = the model asserts nothing about it, so it is allowed.
     assert missing_evidence(claims, ledger) == ["gaming_share"]
