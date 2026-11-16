@@ -138,6 +138,19 @@ restent à l'opérateur : rien n'est codé en dur. Un acteur par créateur, donc
 coût par fiche, à budgéter. Sans échantillon, la ligne d'engagement reste
 inconnue et la fiche part en revue — c'est le comportement voulu, pas un défaut.
 
+### La commande de run
+
+Un seul appel enchaîne les trois étapes : collecte, notation des pages fraîches
+avec échantillon, écriture si un écrivain est fourni. Tout ce qui sort de la
+machine est injecté — le collecteur, le fournisseur de modèle, le chercheur
+d'acteur et l'écrivain —, ce qui permet de rejouer un run complet hors ligne.
+
+Sans écrivain, le run rend les scores et **n'écrit rien** : c'est l'état actuel,
+et le résultat le dit au lieu de le laisser croire. Un écrivain qui ne renvoie
+rien compte comme « rien écrit » — une fiche rejetée produit une décision, pas
+une course de score. Un écrivain qui échoue est listé par fiche, sans arrêter le
+run.
+
 ## Ce qui reste à faire
 
 1. **Analyse par le modèle avec schéma strict** — le schéma des affirmations est

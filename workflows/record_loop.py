@@ -221,7 +221,11 @@ def score_candidate(
     else:
         record = score_buyer_record(values, ledger)
 
-    return replace(record, rejected=tuple(rejected) + record.rejected)
+    return replace(
+        record,
+        rejected=tuple(rejected) + record.rejected,
+        record_id=candidate.record_id,
+    )
 
 
 def score_candidates(

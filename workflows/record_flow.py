@@ -33,6 +33,7 @@ class RecordScore:
     rejected: tuple[str, ...] = ()
     notes: tuple[str, ...] = ()
     measure: EngagementMeasure | None = None
+    record_id: str | None = None
 
     def run_row(self) -> dict | None:
         return self.result.to_score_run()
