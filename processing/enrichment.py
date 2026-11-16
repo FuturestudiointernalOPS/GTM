@@ -20,6 +20,33 @@ from processing.scoring import SIZE_BANDS, BuyerMeasures, CreatorMeasures
 
 _CONFLICT = object()
 
+# The keys the extraction contract may hand over (docs/extraction.md). The step
+# below is the only thing that knows how each one becomes a measure.
+CREATOR_FACT_KEYS = frozenset(
+    {
+        "gaming_share",
+        "gaming_window",
+        "followers",
+        "published_last_30_days",
+        "ad_contact_or_rate_card",
+        "past_labeled_ads",
+        "main_platform",
+        "russian_comment_share",
+        "comment_sample",
+    }
+)
+
+BUYER_FACT_KEYS = frozenset(
+    {
+        "creators_paid",
+        "sells_to_gamers",
+        "decision_maker_role",
+        "decision_maker_email_verified",
+        "employee_band",
+        "recent_event",
+    }
+)
+
 
 @dataclass(frozen=True)
 class Fact:

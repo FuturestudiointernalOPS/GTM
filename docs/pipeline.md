@@ -65,16 +65,40 @@ est tolérée.
 C'est cette couche qui sera donnée au modèle au moment de l'analyse : le modèle
 interprète les preuves, il ne les crée pas.
 
+## Du fait au score
+
+La chaîne qui transforme une fiche en score existe en mémoire, même si la collecte
+ne l'appelle pas encore :
+
+```text
+claims + ledger          ce que l'extracteur affirme, et les preuves
+   |
+   v
+extraction              clé connue, preuve existante, pas d'inférence
+   |
+   v
+enrichissement          fait -> mesure typée, unité et domaine contrôlés
+   |
+   +--> engagement : échantillon -> médiane -> rattachement
+   |
+   v
+score                   points exacts, décision, lignes prêtes pour la base
+```
+
+Les contrats sont `docs/extraction.md`, `docs/enrichment.md`,
+`docs/engagement.md` et `docs/scoring.md`. Le parcours qui les enchaîne est dans
+`workflows/record_flow.py` : il rend le calcul et les lignes, il n'écrit rien.
+
 ## Ce qui reste à faire
 
-1. **Analyse par le modèle avec schéma strict** — dès qu'Intern 2 aura fourni
-   les critères réels, valider la sortie du modèle contre un schéma et contre
-   les preuves, au lieu du prompt provisoire actuel.
-2. **Score et éligibilité déterministes** — les règles de calcul sont fixées au
-   cadrage (§3.5) et le plan de mise en œuvre est dans `docs/scoring.md`. La
-   mesure de l'engagement est fixée en 1.4 (`docs/engagement.md`) ; restent la
-   calibration des seuils Rutube et YouTube et le cas VK Video Live seul. Le score
-   reste une étape à part, versionnée.
+1. **Analyse par le modèle avec schéma strict** — le schéma des affirmations est
+   écrit (`docs/extraction.md`) et contrôlé contre les preuves ; restent le
+   prompt définitif et la validation de la sortie réelle du modèle.
+2. **Score et éligibilité déterministes** — le parcours existe en mémoire
+   (`workflows/record_flow.py`) et les règles sont fixées (§3.5,
+   `docs/scoring.md`). Restent la calibration des seuils Rutube et YouTube, le cas
+   VK Video Live seul, l'écriture des lignes en base, et l'extraction réelle des
+   faits qui alimente la chaîne.
 3. **Baserow** — remplacer le fichier JSON par la vraie base, sans changer le
    contrat `contains_url` / `contains_handle` / `add`.
 4. **Copilote analyste** — optionnel, en lecture seule, avec budget et liste

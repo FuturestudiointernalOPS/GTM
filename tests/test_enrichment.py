@@ -4,9 +4,16 @@ The step is the only place where a stored fact becomes a criterion value. These
 tests pin the four rules it must never break: no source, no fact; a
 contradiction is not a choice; out of domain is not capped; absent is not zero.
 """
+from dataclasses import asdict
 from fractions import Fraction
 
-from processing.enrichment import Fact, buyer_measures, creator_measures
+from processing.enrichment import (
+    BUYER_FACT_KEYS,
+    CREATOR_FACT_KEYS,
+    Fact,
+    buyer_measures,
+    creator_measures,
+)
 from processing.scoring import QUALIFIED, TO_REVIEW, score_buyer, score_creator
 
 SRC = "https://example.test/record"
@@ -183,3 +190,44 @@ def test_an_unknown_band_is_not_a_zero():
 
     assert size.points is None
     assert size.status == "UNKNOWN"
+
+
+# --- the two lists of keys cannot drift apart -------------------------------
+
+CREATOR_SAMPLES = {
+    "gaming_share": 60,
+    "gaming_window": 30,
+    "followers": 25_000,
+    "published_last_30_days": 7,
+    "ad_contact_or_rate_card": True,
+    "past_labeled_ads": False,
+    "main_platform": "VK Video",
+    "russian_comment_share": 70,
+    "comment_sample": 50,
+}
+
+BUYER_SAMPLES = {
+    "creators_paid": 1,
+    "sells_to_gamers": True,
+    "decision_maker_role": "CMO",
+    "decision_maker_email_verified": True,
+    "employee_band": "50-199",
+    "recent_event": True,
+}
+
+
+def test_every_allowed_creator_key_is_wired():
+    assert set(CREATOR_SAMPLES) == CREATOR_FACT_KEYS
+    for key, value in CREATOR_SAMPLES.items():
+        measures = creator_measures([fact(key, value)]).measures
+        assert any(value is not None for value in asdict(measures).values()), key
+
+
+def test_every_allowed_buyer_key_is_wired():
+    assert set(BUYER_SAMPLES) == BUYER_FACT_KEYS
+    for key, value in BUYER_SAMPLES.items():
+        facts = [fact(key, value)]
+        if key == "decision_maker_email_verified":
+            facts.append(fact("decision_maker_role", "CMO"))
+        measures = buyer_measures(facts).measures
+        assert any(value is not None for value in asdict(measures).values()), key
