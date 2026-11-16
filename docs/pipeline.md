@@ -131,6 +131,13 @@ L'identifiant de fiche est l'**adresse normalisée** de la page tant qu'aucune
 fiche n'existe en base : c'est un repère de run, pas un identifiant de base. Il
 deviendra l'identifiant réel quand les fiches seront créées.
 
+Pour les créateurs, l'**échantillon d'engagement** se collecte au même moment :
+la plateforme est lue dans l'adresse de la page, un acteur fournit les lignes, et
+elles sont normalisées à l'heure du run. Le choix de l'acteur et son entrée
+restent à l'opérateur : rien n'est codé en dur. Un acteur par créateur, donc un
+coût par fiche, à budgéter. Sans échantillon, la ligne d'engagement reste
+inconnue et la fiche part en revue — c'est le comportement voulu, pas un défaut.
+
 ## Ce qui reste à faire
 
 1. **Analyse par le modèle avec schéma strict** — le schéma des affirmations est

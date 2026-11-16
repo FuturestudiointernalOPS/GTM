@@ -304,3 +304,36 @@ def test_score_pages_scores_the_fresh_pages():
 
     assert result.failed == ()
     assert [record.result.score for record in result.scored] == [59]
+
+
+# --- the sample can be collected on the way ----------------------------------
+
+
+def test_a_sample_gives_the_creator_its_engagement_points():
+    record = score_candidate(
+        FakeProvider(lambda payload: answer()),
+        candidate(),
+        sample_for=lambda item: items(),
+    )
+
+    assert record.result.score == 79
+    assert record.result.proposal == PRESELECTED
+
+
+def test_score_pages_can_collect_samples():
+    pages = [
+        {
+            "url": "https://vk.com/a",
+            "query_used": "creator.general.telegram_rating_2026",
+            "snippet": page(),
+        }
+    ]
+
+    result = score_pages(
+        FakeProvider(lambda payload: answer()),
+        pages,
+        read_at=READ,
+        sample_for=lambda item: items(),
+    )
+
+    assert [record.result.score for record in result.scored] == [79]

@@ -13,7 +13,7 @@ The anchor proves the model was shown a page, not that it read the value. So
 every claim must come with a verbatim excerpt, and the loop checks that the
 excerpt really appears in the page: a claim without one is dropped.
 """
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 
 from ai.provider import AIProvider
@@ -30,6 +30,9 @@ from workflows.record_flow import (
 )
 
 MAX_TEXT = 20_000
+
+# What the loop may call to obtain one creator's engagement sample.
+SampleFor = Callable[["Candidate"], Iterable[EngagementItem] | None]
 
 # Shortest excerpt accepted, once whitespace and case are normalised. A shorter
 # one ("25", "60") would match by accident on almost any page.
@@ -119,12 +122,14 @@ def score_pages(
     *,
     read_at: str,
     items_by_record: Mapping[str, Iterable[EngagementItem]] | None = None,
+    sample_for: SampleFor | None = None,
 ) -> LoopResult:
     """Score the fresh pages of one run: one model call per candidate."""
     return score_candidates(
         provider,
         candidates_from_pages(pages, reads, read_at=read_at),
         items_by_record=items_by_record,
+        sample_for=sample_for,
     )
 
 
@@ -193,9 +198,13 @@ def score_candidate(
     candidate: Candidate,
     *,
     items: Iterable[EngagementItem] | None = None,
+    sample_for: SampleFor | None = None,
     measure_run_id: str | None = None,
 ) -> RecordScore:
     """Turn one candidate into a score, with its own evidence."""
+    if items is None and sample_for is not None:
+        items = sample_for(candidate)
+
     collected = collect_claims(provider, candidate)
     values, rejected = verify_quotes(collected, text=candidate.text)
     ledger = record_claims(
@@ -220,6 +229,7 @@ def score_candidates(
     candidates: Iterable[Candidate],
     *,
     items_by_record: Mapping[str, Iterable[EngagementItem]] | None = None,
+    sample_for: SampleFor | None = None,
 ) -> LoopResult:
     """Score a batch; a record that fails is listed, the others continue."""
     scored: list[RecordScore] = []
@@ -233,6 +243,7 @@ def score_candidates(
                     provider,
                     candidate,
                     items=samples.get(candidate.record_id),
+                    sample_for=sample_for,
                 )
             )
         except Exception as error:  # noqa: BLE001 - one bad record must not stop the batch
