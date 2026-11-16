@@ -121,6 +121,16 @@ Ce que cela ne prouve pas : que l'interprétation est juste. Un extrait peut
 exister et être mal compris, ou venir d'un autre contexte. La citation élimine
 l'invention, pas l'erreur de lecture ; l'audit humain tranche le reste.
 
+Le run hebdomadaire alimente la boucle : chaque **page fraîche** devient un
+candidat, avec le texte lu quand il existe, la requête qui l'a trouvée — c'est
+elle qui dit si la page parle d'un créateur ou d'un acheteur — et l'heure du run
+comme date de lecture. Une page sans texte, ou trouvée par une requête hors plan,
+n'entre pas, et l'on évite ainsi un appel de modèle pour rien.
+
+L'identifiant de fiche est l'**adresse normalisée** de la page tant qu'aucune
+fiche n'existe en base : c'est un repère de run, pas un identifiant de base. Il
+deviendra l'identifiant réel quand les fiches seront créées.
+
 ## Ce qui reste à faire
 
 1. **Analyse par le modèle avec schéma strict** — le schéma des affirmations est

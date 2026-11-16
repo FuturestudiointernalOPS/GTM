@@ -23,6 +23,7 @@ class PipelineResult:
 
     plan: tuple
     pages: list[dict]
+    fresh: list[dict]
     skipped: list[dict]
     reads: list
     ledger: EvidenceLedger
@@ -100,6 +101,7 @@ def run_week(
     return PipelineResult(
         plan=plan,
         pages=pages,
+        fresh=fresh,
         skipped=skipped,
         reads=reads,
         ledger=ledger,

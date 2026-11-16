@@ -11,15 +11,20 @@ import pytest
 from pydantic import ValidationError
 
 from ai.provider import AIProvider
+from integrations.webreader import PageRead
 from processing.engagement import EngagementItem
 from processing.scoring import PRESELECTED, TO_REVIEW
+from workflows.record_flow import BUYER, CREATOR
 from workflows.record_loop import (
     Candidate,
     Claims,
+    candidates_from_pages,
     collect_claims,
+    kind_for_query,
     record_claims,
     score_candidate,
     score_candidates,
+    score_pages,
     verify_quotes,
 )
 
@@ -239,3 +244,63 @@ def test_an_invented_key_fails_at_the_border():
             FakeProvider(lambda payload: '{"claims": {"invented_key": 1}}'),
             candidate(),
         )
+
+
+# --- the weekly entry -------------------------------------------------------
+
+
+def test_the_query_block_tells_the_filon():
+    # The id prefix is not enough: "cis." carries both creators and buyers.
+    assert kind_for_query("creator.general.telegram_rating_2026") == CREATOR
+    assert kind_for_query("cis.uz_gaming_bloggers") == CREATOR
+    assert kind_for_query("cis.kz_esports_partners") == BUYER
+    assert kind_for_query("not.a.query") is None
+    assert kind_for_query(None) is None
+
+
+def test_pages_become_candidates():
+    reads = [PageRead(url="https://vk.com/a", text=page())]
+    pages = [
+        {
+            "url": "https://vk.com/a",
+            "query_used": "creator.general.telegram_rating_2026",
+            "snippet": "сниппет",
+        },
+        {
+            "url": "https://vk.com/b",
+            "query_used": "cis.kz_esports_partners",
+            "snippet": "компания продаёт игрокам",
+        },
+    ]
+
+    candidates = candidates_from_pages(pages, reads, read_at=READ)
+
+    assert [item.kind for item in candidates] == [CREATOR, BUYER]
+    assert candidates[0].text == page()  # the read text wins over the snippet
+    assert candidates[1].text == "компания продаёт игрокам"
+    assert candidates[0].record_id == "vk.com/a"
+
+
+def test_a_page_without_text_or_known_query_is_skipped():
+    pages = [
+        {"url": "https://vk.com/x", "query_used": "creator.general.telegram_rating_2026"},
+        {"url": "https://vk.com/y", "query_used": "not.a.query", "snippet": "txt"},
+        {"query_used": "creator.general.telegram_rating_2026", "snippet": "txt"},
+    ]
+
+    assert candidates_from_pages(pages, read_at=READ) == []
+
+
+def test_score_pages_scores_the_fresh_pages():
+    pages = [
+        {
+            "url": "https://vk.com/a",
+            "query_used": "creator.general.telegram_rating_2026",
+            "snippet": page(),
+        }
+    ]
+
+    result = score_pages(FakeProvider(lambda payload: answer()), pages, read_at=READ)
+
+    assert result.failed == ()
+    assert [record.result.score for record in result.scored] == [59]

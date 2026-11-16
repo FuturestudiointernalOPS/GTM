@@ -17,8 +17,10 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 
 from ai.provider import AIProvider
+from processing.deduplication import normalize_url
 from processing.engagement import EngagementItem
 from processing.evidence import OBSERVED, EvidenceLedger, Source
+from workflows import query_pool
 from workflows.record_flow import (
     BUYER,
     CREATOR,
@@ -32,6 +34,10 @@ MAX_TEXT = 20_000
 # Shortest excerpt accepted, once whitespace and case are normalised. A shorter
 # one ("25", "60") would match by accident on almost any page.
 MIN_QUOTE = 8
+
+# The plan's query ids, to tell a creator page from a buyer page. The id prefix is
+# not enough: "cis." carries both creators and buyers, only the block says which.
+_QUERY_CATALOG = {query.id: query for query in query_pool.all_queries()}
 
 
 @dataclass(frozen=True)
@@ -59,6 +65,67 @@ class LoopResult:
 
     scored: tuple[RecordScore, ...] = ()
     failed: tuple[tuple[str, str], ...] = ()
+
+
+def kind_for_query(query_used: str | None) -> str | None:
+    """Which filon a page belongs to, from the query block that found it."""
+    if not query_used:
+        return None
+    query = _QUERY_CATALOG.get(query_used)
+    if query is None:
+        return None
+    block = query.block.lower()
+    if "creator" in block:
+        return CREATOR
+    if "buyer" in block:
+        return BUYER
+    return None
+
+
+def candidates_from_pages(pages, reads=(), *, read_at: str) -> list[Candidate]:
+    """Turn collected pages into candidates, one per page with readable text.
+
+    The record id is the normalised page address until records exist: it is a
+    stable handle for the run, not a database identifier.
+    """
+    texts = {read.url: read.text for read in reads if getattr(read, "text", None)}
+    candidates: list[Candidate] = []
+
+    for page in pages:
+        url = page.get("url")
+        kind = kind_for_query(page.get("query_used"))
+        if not url or kind is None:
+            continue
+        text = texts.get(url) or page.get("snippet") or ""
+        if not text.strip():
+            continue
+        candidates.append(
+            Candidate(
+                kind=kind,
+                record_id=normalize_url(url) or url,
+                source_url=url,
+                text=text,
+                read_at=read_at,
+            )
+        )
+
+    return candidates
+
+
+def score_pages(
+    provider: AIProvider,
+    pages,
+    reads=(),
+    *,
+    read_at: str,
+    items_by_record: Mapping[str, Iterable[EngagementItem]] | None = None,
+) -> LoopResult:
+    """Score the fresh pages of one run: one model call per candidate."""
+    return score_candidates(
+        provider,
+        candidates_from_pages(pages, reads, read_at=read_at),
+        items_by_record=items_by_record,
+    )
 
 
 def collect_claims(provider: AIProvider, candidate: Candidate) -> Claims:
