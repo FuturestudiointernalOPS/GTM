@@ -11,7 +11,8 @@ function of measures that other stages already collected and sourced, so the
 same facts always give the same integer. Eligibility is never decided here
 (H-04): a high score cannot repair a missing registry check.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from decimal import Decimal
 from fractions import Fraction
 from math import floor
 
@@ -23,9 +24,13 @@ THRESHOLD = 70
 MEASURED = "MEASURED"
 UNKNOWN = "UNKNOWN"
 PRESELECTED = "PRESELECTED"
+QUALIFIED = "QUALIFIED"
 REJECTED = "REJECTED"
 TO_REVIEW = "TO_REVIEW"
 OUT_OF_PROFILE = "OUT_OF_PROFILE"
+
+# The buyer filon says "qualified"; the decision engine says "preselected".
+_BUYER_LABELS = {PRESELECTED: QUALIFIED}
 
 # E-C-04: outside this range a creator is out of profile, not rejected.
 PROFILE_MIN_FOLLOWERS = 5_000
@@ -113,6 +118,28 @@ class ScoreResult:
             lines=(),
         )
 
+    def to_dict(self) -> dict:
+        """The score record, in the shape documented in scoring.md §3."""
+        return {
+            "criteria_version": self.criteria_version,
+            "proposal": self.proposal,
+            "score": self.score,
+            "total_exact": _exact(self.total_exact),
+            "incomplete": self.incomplete,
+            "bounds": [_exact(self.lower_bound), _exact(self.upper_bound)],
+            "lines": [
+                {
+                    "criterion": line.criterion,
+                    "status": line.status,
+                    "measure": line.measure,
+                    "points": _exact(line.points),
+                    "flags": list(line.flags),
+                    "reason": line.reason,
+                }
+                for line in self.lines
+            ],
+        }
+
 
 @dataclass(frozen=True)
 class CreatorMeasures:
@@ -185,7 +212,9 @@ def score_buyer(measures: BuyerMeasures, *, threshold: int = THRESHOLD) -> Score
         _size(measures),
         _timing(measures),
     )
-    return _result(lines, threshold)
+    result = _result(lines, threshold)
+    # The buyer vocabulary says "qualified" where the creator one says "preselected".
+    return replace(result, proposal=_BUYER_LABELS.get(result.proposal, result.proposal))
 
 
 def _result(lines: tuple[ScoreLine, ...], threshold: int) -> ScoreResult:
@@ -348,6 +377,7 @@ def _pays_creators(measures: BuyerMeasures) -> ScoreLine:
 
 
 def _sells_to_gamers(measures: BuyerMeasures) -> ScoreLine:
+    # E-B-05 was removed in 1.4: a zero here costs 20 points, it does not reject.
     base = {"criterion": "sells_to_gamers", "maximum": 20, "blocking": True}
     if measures.gaming_core is None:
         return _unknown(**base, reason="missing")
@@ -452,3 +482,16 @@ def _number(value: Fraction) -> str:
     if value.denominator == 1:
         return str(value.numerator)
     return f"{float(value):.2f}".rstrip("0").rstrip(".")
+
+
+def _exact(value: Fraction | None) -> str | None:
+    """Serialize an exact value: a decimal when it is finite, else a fraction."""
+    if value is None:
+        return None
+    denominator = value.denominator
+    for factor in (2, 5):
+        while denominator % factor == 0:
+            denominator //= factor
+    if denominator != 1:
+        return f"{value.numerator}/{value.denominator}"
+    return format(Decimal(value.numerator) / Decimal(value.denominator), "f")

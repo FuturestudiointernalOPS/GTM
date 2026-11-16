@@ -10,6 +10,7 @@ from processing.scoring import (
     ENGAGEMENT_THRESHOLDS,
     OUT_OF_PROFILE,
     PRESELECTED,
+    QUALIFIED,
     REJECTED,
     TO_REVIEW,
     BuyerMeasures,
@@ -184,7 +185,7 @@ def test_v9_buyer_one_integration():
 
     assert result.total_exact == 85
     assert result.score == 85
-    assert result.proposal == PRESELECTED
+    assert result.proposal == QUALIFIED
 
 
 def test_v10_buyer_exactly_seventy_qualifies():
@@ -192,19 +193,49 @@ def test_v10_buyer_exactly_seventy_qualifies():
 
     assert result.total_exact == 70
     assert result.score == 70
-    assert result.proposal == PRESELECTED
+    assert result.proposal == QUALIFIED
 
 
 def test_v11_buyer_with_unknown_headcount():
     result = score_buyer(buyer(creators_paid=2, employees=None))
 
     assert result.total_exact == 85
-    assert result.proposal == PRESELECTED
+    assert result.proposal == QUALIFIED
     assert result.incomplete is True
+
+
+def test_v15_a_non_gaming_buyer_is_scored_not_rejected():
+    # E-B-05 was removed in 1.4: the criterion costs 20 points, it does not exclude.
+    result = score_buyer(buyer(creators_paid=2, gaming_core=False))
+
+    assert result.total_exact == 80
+    assert result.proposal == QUALIFIED
+    assert line(result, "sells_to_gamers").points == 0
 
 
 def test_v12_integrations_are_capped():
     assert line(score_buyer(buyer(creators_paid=3)), "pays_creators").points == 30
+
+
+def test_the_score_record_uses_the_documented_shape():
+    record = score_creator(creator()).to_dict()
+
+    assert record["criteria_version"] == "1.4"
+    assert record["proposal"] == PRESELECTED
+    assert record["score"] == 79
+    assert record["total_exact"] == "79.875"
+    assert record["incomplete"] is False
+    assert record["bounds"] == ["79.875", "79.875"]
+    assert record["lines"][0]["criterion"] == "focus_gaming"
+    assert record["lines"][0]["points"] == "18.75"
+
+
+def test_a_repeating_total_stays_an_exact_fraction():
+    # 1 000 views for 30 000 followers on VK Video: 25/3 points on the line.
+    record = score_creator(creator(median_views=1_000, followers=30_000)).to_dict()
+
+    assert "/" in record["total_exact"]
+    assert record["score"] == 68
 
 
 def test_v13_rutube_threshold_is_five_percent():
