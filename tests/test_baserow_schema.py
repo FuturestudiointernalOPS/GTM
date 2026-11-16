@@ -45,7 +45,13 @@ CREATOR_CONTRACT_FIELDS = {
     "gaming_share",
     "followers",
     "followers_read_at",
-    "average_views",
+    "engagement_status",
+    "engagement_measure",
+    "engagement_statistic",
+    "engagement_value",
+    "engagement_sample_size",
+    "engagement_window",
+    "engagement_read_at",
     "published_last_30_days",
     "last_published_at",
     "rkn_registry_url",
@@ -119,6 +125,19 @@ SCORE_FIELDS = {
     "score_proposal",
     "score_bounds_lower",
     "score_bounds_upper",
+}
+
+ENGAGEMENT_FIELDS = {
+    "engagement_status",
+    "engagement_measure",
+    "engagement_statistic",
+    "engagement_value",
+    "engagement_sample_size",
+    "engagement_unreadable_count",
+    "engagement_window",
+    "engagement_read_at",
+    "engagement_sample_ref",
+    "engagement_flag",
 }
 
 
@@ -221,3 +240,33 @@ def test_scope_contract_fields_are_present(schema: dict) -> None:
     assert SCORE_FIELDS <= buyer_fields, (
         f"Acheteurs misses score fields: {sorted(SCORE_FIELDS - buyer_fields)}"
     )
+
+
+def test_engagement_fields_follow_the_measure_contract(schema: dict) -> None:
+    tables = _tables(schema)
+
+    for table_name in ("Createurs", "Profils_plateforme"):
+        fields = {field["name"]: field for field in tables[table_name]["fields"]}
+
+        assert ENGAGEMENT_FIELDS <= fields.keys(), (
+            f"{table_name} misses: {sorted(ENGAGEMENT_FIELDS - fields.keys())}"
+        )
+        assert fields["engagement_status"]["options"] == ["MEASURED", "UNKNOWN"]
+        assert fields["engagement_measure"]["options"] == [
+            "VIEWS_PER_ITEM",
+            "CONCURRENT_VIEWERS",
+        ]
+        assert fields["engagement_statistic"]["options"] == ["MEDIAN"]
+        assert fields["engagement_flag"]["options"] == [
+            "WEAK_SAMPLE",
+            "WINDOW_EXTENDED",
+            "DISPERSION",
+            "UNREADABLE",
+        ]
+
+    creator_fields = {
+        field["name"]: field for field in tables["Createurs"]["fields"]
+    }
+    assert creator_fields["engagement_status"]["required"] is True
+    assert creator_fields["average_views"]["required"] is False
+    assert creator_fields["average_concurrent_viewers"]["required"] is False

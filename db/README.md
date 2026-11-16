@@ -19,11 +19,18 @@ psql -f db/postgres/smoke_test.sql   # vérifie puis annule tout
 ```
 
 `001_schema.sql` crée les types, tables, index, triggers et vues. Il ne crée
-aucune fiche : la version de critères `1.3` doit exister avant toute insertion,
-ce que fait `002_seed_reference.sql` (la version 1.2 reste en historique, retirée).
-La version 1.4, qui fixe la mesure de l'engagement, est décrite dans
-`docs/engagement.md` ; le schéma et le seed seront mis à jour en E1, avec 1.3
-conservé en historique.
+aucune fiche : la version de critères `1.4` doit exister avant toute insertion,
+ce que fait `002_seed_reference.sql` (les versions 1.3 et 1.2 restent en
+historique, retirées).
+
+Sur une base créée avant la 1.4, appliquer ensuite la migration :
+
+```bash
+psql -f db/postgres/003_engagement.sql
+```
+
+Elle ajoute les champs d'engagement, l'échantillon et le résultat de mesure, puis
+met à jour la vue de contrat. Elle est idempotente.
 
 `smoke_test.sql` insère un créateur, un acheteur, un profil, une source, des
 faits, une transition de statut et un opt-out, puis termine par `ROLLBACK`. Il

@@ -14,7 +14,7 @@
 --   psql -f db/postgres/001_schema.sql
 --   psql -f db/postgres/002_seed_reference.sql
 --
--- La version 1.3 des critères doit exister avant la création d'une fiche.
+-- La version 1.4 des critères doit exister avant la création d'une fiche.
 
 BEGIN;
 
@@ -102,6 +102,26 @@ CREATE TYPE decision_type AS ENUM (
 );
 
 CREATE TYPE platform_coverage AS ENUM ('COVERED', 'NOT_COVERED', 'UNKNOWN');
+
+CREATE TYPE engagement_status AS ENUM ('MEASURED', 'UNKNOWN');
+CREATE TYPE engagement_measure_kind AS ENUM ('VIEWS_PER_ITEM', 'CONCURRENT_VIEWERS');
+CREATE TYPE engagement_statistic_kind AS ENUM ('MEDIAN');
+CREATE TYPE engagement_window_kind AS ENUM ('TIME', 'FALLBACK');
+CREATE TYPE metric_item_kind AS ENUM (
+    'POST',
+    'LONG_VIDEO',
+    'SHORT',
+    'STREAM',
+    'VOD',
+    'CLIP'
+);
+CREATE TYPE metric_exclusion_reason AS ENUM (
+    'PINNED',
+    'PAID_AD',
+    'CLIP',
+    'LIVE',
+    'UNREADABLE'
+);
 
 CREATE TYPE platform_risk AS ENUM (
     'LOW',
@@ -245,7 +265,7 @@ CREATE TABLE record (
                                 'PRESELECTED', 'REJECTED', 'TO_REVIEW', 'QUALIFIED'
                             )
                         ),
-    criteria_version    text NOT NULL DEFAULT '1.3'
+    criteria_version    text NOT NULL DEFAULT '1.4'
                             REFERENCES criteria_version(version),
     assigned_to         text,
     tags                text[] NOT NULL DEFAULT '{}',
@@ -373,6 +393,21 @@ CREATE TABLE creator_platform_account (
     coverage_checked_at         timestamptz,
     followers                   integer CHECK (followers IS NULL OR followers >= 0),
     followers_read_at           timestamptz,
+    engagement_status           engagement_status NOT NULL DEFAULT 'UNKNOWN',
+    engagement_measure          engagement_measure_kind,
+    engagement_statistic        engagement_statistic_kind,
+    engagement_value            numeric(15, 1)
+                                    CHECK (engagement_value IS NULL OR engagement_value >= 0),
+    engagement_sample_size      integer
+                                    CHECK (engagement_sample_size IS NULL OR engagement_sample_size >= 0),
+    engagement_unreadable_count integer
+                                    CHECK (engagement_unreadable_count IS NULL OR engagement_unreadable_count >= 0),
+    engagement_window_start     timestamptz,
+    engagement_window_end       timestamptz,
+    engagement_window_mode      engagement_window_kind,
+    engagement_read_at          timestamptz,
+    engagement_sample_hash      text,
+    engagement_flags            text[] NOT NULL DEFAULT '{}',
     average_views               integer CHECK (average_views IS NULL OR average_views >= 0),
     average_concurrent_viewers  integer CHECK (average_concurrent_viewers IS NULL OR average_concurrent_viewers >= 0),
     published_last_30_days      integer CHECK (published_last_30_days IS NULL OR published_last_30_days >= 0),
@@ -380,7 +415,37 @@ CREATE TABLE creator_platform_account (
     created_at                  timestamptz NOT NULL DEFAULT now(),
     updated_at                  timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT creator_platform_handle_unique UNIQUE (platform_id, normalized_handle),
-    CONSTRAINT creator_platform_url_unique UNIQUE (normalized_url)
+    CONSTRAINT creator_platform_url_unique UNIQUE (normalized_url),
+    CONSTRAINT creator_platform_engagement_measured CHECK (
+        engagement_status <> 'MEASURED'
+        OR (
+            engagement_measure IS NOT NULL
+            AND engagement_statistic = 'MEDIAN'
+            AND engagement_value IS NOT NULL
+            AND engagement_sample_size >= 5
+            AND engagement_window_start IS NOT NULL
+            AND engagement_window_end IS NOT NULL
+            AND engagement_window_mode IS NOT NULL
+            AND engagement_read_at IS NOT NULL
+            AND followers IS NOT NULL
+            AND followers > 0
+            AND followers_read_at IS NOT NULL
+            AND followers_read_at = engagement_read_at
+        )
+    ),
+    CONSTRAINT creator_platform_engagement_unknown CHECK (
+        engagement_status <> 'UNKNOWN'
+        OR (
+            engagement_measure IS NULL
+            AND engagement_statistic IS NULL
+            AND engagement_value IS NULL
+            AND engagement_sample_size IS NULL
+            AND engagement_window_start IS NULL
+            AND engagement_window_end IS NULL
+            AND engagement_window_mode IS NULL
+            AND engagement_read_at IS NULL
+        )
+    )
 );
 
 CREATE UNIQUE INDEX creator_platform_one_primary
@@ -533,6 +598,83 @@ CREATE INDEX fact_current_idx ON fact (record_id, key) WHERE is_current;
 CREATE INDEX fact_source_idx ON fact (source_snapshot_id);
 
 -- ---------------------------------------------------------------------------
+-- 6bis. Mesure de l'engagement — échantillon et résultat
+-- ---------------------------------------------------------------------------
+
+-- Un élément d'échantillon est une lecture datée d'une publication, d'une vidéo
+-- ou d'un direct. L'élément reste conservé même exclu, avec son motif (M-06, M-08).
+CREATE TABLE creator_metric_sample (
+    id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    creator_platform_account_id uuid NOT NULL
+                                    REFERENCES creator_platform_account(id) ON DELETE CASCADE,
+    source_snapshot_id          uuid NOT NULL REFERENCES source_snapshot(id),
+    item_url                    text NOT NULL,
+    item_id                     text,
+    item_kind                   metric_item_kind NOT NULL,
+    published_at                timestamptz NOT NULL,
+    value                       integer CHECK (value IS NULL OR value >= 0),
+    read_at                     timestamptz NOT NULL,
+    readable                    boolean NOT NULL DEFAULT true,
+    exclusion_reason            metric_exclusion_reason,
+    created_at                  timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT metric_sample_value_matches_readability CHECK (
+        (readable AND value IS NOT NULL)
+        OR (NOT readable AND value IS NULL)
+    ),
+    -- Un élément structurellement exclu peut aussi être illisible :
+    -- readable=false porte l'illisibilité, exclusion_reason la cause structurelle.
+    CONSTRAINT metric_sample_unreadable_reason CHECK (
+        readable OR exclusion_reason IS NOT NULL
+    ),
+    CONSTRAINT metric_sample_unique_reading UNIQUE (
+        creator_platform_account_id, item_url, read_at
+    )
+);
+
+CREATE INDEX creator_metric_sample_account_idx
+    ON creator_metric_sample (creator_platform_account_id, published_at DESC);
+
+-- Le résultat de la mesure est séparé de l'échantillon : le score reçoit la
+-- médiane, jamais les éléments. La fenêtre et les drapeaux restent auditables.
+CREATE TABLE engagement_measure_run (
+    id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    creator_platform_account_id uuid NOT NULL
+                                    REFERENCES creator_platform_account(id) ON DELETE CASCADE,
+    criteria_version            text NOT NULL REFERENCES criteria_version(version),
+    status                      engagement_status NOT NULL,
+    measure_kind                engagement_measure_kind NOT NULL,
+    statistic                   engagement_statistic_kind NOT NULL DEFAULT 'MEDIAN',
+    value                       numeric(15, 1)
+                                    CHECK (value IS NULL OR value >= 0),
+    sample_size                 integer NOT NULL DEFAULT 0 CHECK (sample_size >= 0),
+    unreadable_count            integer NOT NULL DEFAULT 0 CHECK (unreadable_count >= 0),
+    window_start                timestamptz,
+    window_end                  timestamptz,
+    window_mode                 engagement_window_kind,
+    read_at                     timestamptz NOT NULL,
+    sample_hash                 text NOT NULL,
+    flags                       text[] NOT NULL DEFAULT '{}',
+    computed_at                 timestamptz NOT NULL DEFAULT now(),
+    computed_by                 text NOT NULL,
+    CONSTRAINT engagement_run_measured CHECK (
+        status <> 'MEASURED'
+        OR (
+            value IS NOT NULL
+            AND sample_size >= 5
+            AND window_start IS NOT NULL
+            AND window_end IS NOT NULL
+            AND window_mode IS NOT NULL
+        )
+    ),
+    CONSTRAINT engagement_run_unknown CHECK (
+        status <> 'UNKNOWN' OR value IS NULL
+    )
+);
+
+CREATE INDEX engagement_measure_run_account_idx
+    ON engagement_measure_run (creator_platform_account_id, computed_at DESC);
+
+-- ---------------------------------------------------------------------------
 -- 7. Scores rejouables
 -- ---------------------------------------------------------------------------
 
@@ -575,12 +717,16 @@ CREATE TABLE score_line (
     points_max      numeric(5, 2) NOT NULL CHECK (points_max >= 0),
     blocking        boolean NOT NULL DEFAULT false,
     fact_id         uuid REFERENCES fact(id),
+    engagement_measure_run_id uuid REFERENCES engagement_measure_run(id),
     reason          text NOT NULL,
     UNIQUE (score_run_id, criterion_code),
     CONSTRAINT score_line_unknown_has_no_fact CHECK (
         status = 'MEASURED' OR fact_id IS NULL
     )
 );
+
+CREATE INDEX score_line_measure_run_idx
+    ON score_line (engagement_measure_run_id);
 
 -- ---------------------------------------------------------------------------
 -- 8. Éligibilité et décisions
@@ -1134,7 +1280,22 @@ SELECT
         WHERE ac.creator_record_id = r.id
     ) AS last_ad_at,
     r.created_at,
-    r.updated_at
+    r.updated_at,
+    pp.engagement_status,
+    pp.engagement_measure,
+    pp.engagement_statistic,
+    pp.engagement_value,
+    pp.engagement_sample_size,
+    pp.engagement_unreadable_count,
+    CASE
+        WHEN pp.engagement_window_start IS NULL THEN NULL
+        ELSE pp.engagement_window_start::text
+             || '..' || pp.engagement_window_end::text
+             || ' (' || pp.engagement_window_mode::text || ')'
+    END AS engagement_window,
+    pp.engagement_read_at,
+    pp.engagement_sample_hash,
+    pp.engagement_flags
 FROM record r
 JOIN creator c ON c.record_id = r.id
 LEFT JOIN creator_platform_account pp

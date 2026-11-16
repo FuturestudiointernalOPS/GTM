@@ -726,9 +726,9 @@ Champs facultatifs couverts : `other_profiles`, `media_kit_url`, `agency`,
 `engagement_unreadable_count`, `engagement_sample_ref`, `engagement_flag`,
 `audit_notes`.
 
-Les champs d'engagement et les deux tables de mesure entrent dans le schéma en
-E1 (`docs/engagement.md`). Les tableaux ci-dessus décrivent la cible 1.4 ; le
-fichier `schema.json` et le DDL restent en 1.3 jusqu'à cette migration.
+Les champs d'engagement et les deux tables de mesure sont en place depuis E1
+(`docs/engagement.md`). Le fichier `schema.json`, le DDL et le seed sont en 1.4 ;
+la migration `003_engagement.sql` met à jour une base créée en 1.3.
 
 ### Acheteurs
 
@@ -789,7 +789,8 @@ Champs facultatifs couverts : `agency`, `revenue_band`, `competitors`,
 | `db/baserow/apply_schema.py` | seeder Baserow idempotent, mode `--dry-run` |
 | `integrations/baserow.py` | client HTTP des opérations de schéma Baserow |
 | `db/postgres/001_schema.sql` | DDL PostgreSQL, contraintes, triggers, vues de contrat |
-| `db/postgres/002_seed_reference.sql` | critères 1.3 actifs ; la version 1.4 sera semée en E1 (`docs/engagement.md`), avec 1.3 et 1.2 conservés en historique |
+| `db/postgres/002_seed_reference.sql` | critères 1.4 actifs, 1.3 et 1.2 conservés en historique, et référentiel plateformes daté |
+| `db/postgres/003_engagement.sql` | migration 1.3 vers 1.4 : champs, échantillon, résultat de mesure, vue |
 | `db/postgres/smoke_test.sql` | test manuel qui insère, vérifie les vues et annule tout |
 | `tests/test_baserow_schema.py` | contrôles hors ligne du schéma Baserow |
 | `tests/test_baserow_apply.py` | tests du seeder avec une API Baserow simulée |
@@ -800,6 +801,13 @@ Application PostgreSQL :
 psql -f db/postgres/001_schema.sql
 psql -f db/postgres/002_seed_reference.sql
 psql -f db/postgres/smoke_test.sql   # doit se terminer par ROLLBACK
+```
+
+Sur une base créée avant la 1.4, appliquer le seed puis la migration :
+
+```bash
+psql -f db/postgres/002_seed_reference.sql
+psql -f db/postgres/003_engagement.sql
 ```
 
 Création Baserow (après avoir renseigné `BASEROW_URL`, `BASEROW_TOKEN` et

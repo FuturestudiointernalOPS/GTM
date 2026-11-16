@@ -3,7 +3,9 @@
 -- Ces données sont datées et versionnées. Elles ne remplacent pas les documents
 -- de cadrage : elles en sont la copie exploitable par la base.
 --
---   * criteria_version 1.3 : calcul du score de docs/scope.md §3.5, §5.3, §6.3.
+--   * criteria_version 1.4 : mesure de l'engagement de docs/engagement.md.
+--   * criteria_version 1.3 : calcul du score de docs/scope.md §3.5, §5.3, §6.3,
+--     conservée comme historique, retirée (RETIRED).
 --   * criteria_version 1.2 : conservée comme historique, retirée (RETIRED).
 --   * platform : couverture RKN et contraintes de campagne de
 --     docs/verification.md §2.4 et docs/scope.md §5.2. La colonne version est
@@ -151,7 +153,7 @@ SET retired_at = COALESCE(retired_at, now())
 WHERE version = '1.2';
 
 -- ---------------------------------------------------------------------------
--- Critères 1.3 — version active
+-- Critères 1.3 — historique
 -- ---------------------------------------------------------------------------
 
 INSERT INTO criteria_version (
@@ -164,7 +166,7 @@ INSERT INTO criteria_version (
 )
 VALUES (
     '1.3',
-    'ACTIVE',
+    'RETIRED',
     'docs/scope.md §3.5, §5.3, §6.3, §11',
     $json13$
     {
@@ -306,6 +308,84 @@ VALUES (
     'Version 1.3 : calcul du score fixé (S-01 à S-04). Les seuils et poids ne changent pas.',
     now()
 )
+ON CONFLICT (version) DO UPDATE SET
+    status = 'RETIRED',
+    source_ref = EXCLUDED.source_ref,
+    definition = EXCLUDED.definition,
+    notes = EXCLUDED.notes,
+    activated_at = COALESCE(criteria_version.activated_at, now()),
+    retired_at = COALESCE(criteria_version.retired_at, now());
+
+UPDATE criteria_version
+SET retired_at = COALESCE(retired_at, now())
+WHERE version = '1.3';
+
+-- ---------------------------------------------------------------------------
+-- Critères 1.4 — version active
+-- ---------------------------------------------------------------------------
+
+INSERT INTO criteria_version (
+    version,
+    status,
+    source_ref,
+    definition,
+    notes,
+    activated_at
+)
+SELECT
+    '1.4',
+    'ACTIVE',
+    'docs/scope.md §3.5, §5.3, §6.3, §11 ; docs/engagement.md',
+    jsonb_set(
+        jsonb_set(
+            definition,
+            '{scope_version}',
+            '"1.4"'
+        ),
+        '{creator,criteria}',
+        (
+            SELECT jsonb_agg(
+                CASE
+                    WHEN item->>'code' = 'ENGAGEMENT' THEN
+                        item || jsonb_build_object(
+                            'measure', 'médiane des vues par publication ou vidéo (spectateurs simultanés sur Twitch) / abonnés, lus dans le même instantané',
+                            'full_at', '{"telegram":20,"vk_video":10,"twitch":5,"rutube":5,"youtube":10}'::jsonb,
+                            'statistic', 'MEDIAN',
+                            'window', '{"primary":"30d_max30","fallback":"10_last_90d","twitch":"10_last_streams_60d","youtube_fallback_days":180}'::jsonb,
+                            'exclusions', '["PINNED","PAID_AD","CLIP","SHORT","LIVE","VOD"]'::jsonb,
+                            'note', 'Seuils Rutube 5 % et YouTube 10 % provisoires ; voir docs/engagement.md.'
+                        )
+                    ELSE item
+                END
+                ORDER BY ordinality
+            )
+            FROM jsonb_array_elements(definition->'creator'->'criteria')
+                 WITH ORDINALITY AS criteria(item, ordinality)
+        )
+    ) || jsonb_build_object(
+        'engagement_measure',
+        $json14$
+        {
+          "statistic": "MEDIAN",
+          "min_sample": 5,
+          "weak_sample_below": 10,
+          "mean_use": "DIAGNOSTIC_ONLY",
+          "unreadable": "UNKNOWN_BLOCKING",
+          "sample_retained": true,
+          "platforms": {
+            "telegram": {"measure": "views_per_post", "source": "post_view_counter", "threshold": 20, "window": "30d_max30", "fallback": "10_last_90d", "exclude": ["PINNED", "PAID_AD"]},
+            "vk_video": {"measure": "views_per_long_video", "source": "video_view_counter", "threshold": 10, "window": "30d_max30", "fallback": "10_last_90d", "exclude": ["CLIP", "SHORT", "LIVE", "VOD"]},
+            "twitch": {"measure": "average_concurrent_viewers", "source": "stream_stats", "threshold": 5, "window": "10_last_streams_60d", "fallback": "none", "exclude": ["CLIP", "VOD"]},
+            "rutube": {"measure": "views_per_video", "source": "video_view_counter", "threshold": 5, "window": "30d_max30", "fallback": "10_last_90d", "exclude": ["CLIP", "SHORT"]},
+            "youtube": {"measure": "views_per_long_video", "source": "video_view_counter", "threshold": 10, "window": "30d_max30", "fallback": "10_last_180d", "exclude": ["CLIP", "SHORT"]}
+          }
+        }
+        $json14$::jsonb
+    ),
+    'Version 1.4 : mesure de l''engagement fixée (médiane, fenêtre, source) ; seuils Rutube 5 % et YouTube 10 % provisoires.',
+    now()
+FROM criteria_version
+WHERE version = '1.3'
 ON CONFLICT (version) DO UPDATE SET
     status = 'ACTIVE',
     source_ref = EXCLUDED.source_ref,

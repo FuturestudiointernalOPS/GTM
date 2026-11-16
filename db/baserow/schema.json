@@ -389,11 +389,85 @@
           "description": "Date de lecture du nombre d'abonnés."
         },
         {
-          "name": "average_views",
-          "type": "number",
+          "name": "engagement_status",
+          "type": "single_select",
           "required": true,
           "owner": "pg",
-          "description": "Vues moyennes sur la fenêtre documentée (C-03)."
+          "options": ["MEASURED", "UNKNOWN"],
+          "description": "État de la mesure d'engagement (C-03)."
+        },
+        {
+          "name": "engagement_measure",
+          "type": "single_select",
+          "required": false,
+          "owner": "pg",
+          "options": ["VIEWS_PER_ITEM", "CONCURRENT_VIEWERS"],
+          "description": "Unité lue : vues par élément ou spectateurs simultanés."
+        },
+        {
+          "name": "engagement_statistic",
+          "type": "single_select",
+          "required": false,
+          "owner": "pg",
+          "options": ["MEDIAN"],
+          "description": "Statistique de la mesure ; la médiane est la seule admise."
+        },
+        {
+          "name": "engagement_value",
+          "type": "number",
+          "required": false,
+          "owner": "pg",
+          "description": "Médiane exacte, en vues ou en spectateurs simultanés."
+        },
+        {
+          "name": "engagement_sample_size",
+          "type": "number",
+          "required": false,
+          "owner": "pg",
+          "description": "Éléments lisibles retenus dans la fenêtre."
+        },
+        {
+          "name": "engagement_unreadable_count",
+          "type": "number",
+          "required": false,
+          "owner": "pg",
+          "description": "Éléments illisibles dans la fenêtre."
+        },
+        {
+          "name": "engagement_window",
+          "type": "text",
+          "required": false,
+          "owner": "pg",
+          "description": "Fenêtre réellement utilisée, bornes et mode."
+        },
+        {
+          "name": "engagement_read_at",
+          "type": "date_time",
+          "required": false,
+          "owner": "pg",
+          "description": "Instantané de lecture de la mesure."
+        },
+        {
+          "name": "engagement_sample_ref",
+          "type": "long_text",
+          "required": false,
+          "owner": "pg",
+          "description": "Échantillon conservé, ou référence PostgreSQL."
+        },
+        {
+          "name": "engagement_flag",
+          "type": "multiple_select",
+          "required": false,
+          "owner": "pg",
+          "options": ["WEAK_SAMPLE", "WINDOW_EXTENDED", "DISPERSION", "UNREADABLE"],
+          "description": "Drapeaux de qualité de la mesure."
+        },
+        {
+          "name": "average_views",
+          "type": "number",
+          "required": false,
+          "owner": "pg",
+          "description": "Moyenne de diagnostic, ne rapporte aucun point (C-03)."
         },
         {
           "name": "average_concurrent_viewers",
@@ -1380,11 +1454,85 @@
           "description": "Date de lecture des abonnés."
         },
         {
+          "name": "engagement_status",
+          "type": "single_select",
+          "required": false,
+          "owner": "pg",
+          "options": ["MEASURED", "UNKNOWN"],
+          "description": "État de la mesure d'engagement sur ce compte."
+        },
+        {
+          "name": "engagement_measure",
+          "type": "single_select",
+          "required": false,
+          "owner": "pg",
+          "options": ["VIEWS_PER_ITEM", "CONCURRENT_VIEWERS"],
+          "description": "Unité lue sur ce compte."
+        },
+        {
+          "name": "engagement_statistic",
+          "type": "single_select",
+          "required": false,
+          "owner": "pg",
+          "options": ["MEDIAN"],
+          "description": "Statistique de la mesure."
+        },
+        {
+          "name": "engagement_value",
+          "type": "number",
+          "required": false,
+          "owner": "pg",
+          "description": "Médiane exacte sur ce compte."
+        },
+        {
+          "name": "engagement_sample_size",
+          "type": "number",
+          "required": false,
+          "owner": "pg",
+          "description": "Éléments lisibles retenus."
+        },
+        {
+          "name": "engagement_unreadable_count",
+          "type": "number",
+          "required": false,
+          "owner": "pg",
+          "description": "Éléments illisibles dans la fenêtre."
+        },
+        {
+          "name": "engagement_window",
+          "type": "text",
+          "required": false,
+          "owner": "pg",
+          "description": "Fenêtre réellement utilisée."
+        },
+        {
+          "name": "engagement_read_at",
+          "type": "date_time",
+          "required": false,
+          "owner": "pg",
+          "description": "Instantané de lecture."
+        },
+        {
+          "name": "engagement_sample_ref",
+          "type": "long_text",
+          "required": false,
+          "owner": "pg",
+          "description": "Échantillon conservé, ou référence PostgreSQL."
+        },
+        {
+          "name": "engagement_flag",
+          "type": "multiple_select",
+          "required": false,
+          "owner": "pg",
+          "options": ["WEAK_SAMPLE", "WINDOW_EXTENDED", "DISPERSION", "UNREADABLE"],
+          "description": "Drapeaux de qualité de la mesure."
+        },
+        {
           "name": "average_views",
           "type": "number",
           "required": false,
           "owner": "pg",
-          "description": "Vues moyennes sur la fenêtre documentée."
+          "description": "Moyenne de diagnostic, ne rapporte aucun point."
         },
         {
           "name": "average_concurrent_viewers",
