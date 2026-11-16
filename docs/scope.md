@@ -15,7 +15,8 @@ Elle tranche aussi les quatre entrées qui restaient ouvertes au §14 : le seuil
 70 est confirmé ; l'unité de comptage d'une intégration est le **créateur payé**,
 pas la création publicitaire ; l'**activité** est notée et non éliminatoire ; les
 critères binaires ont un seuil observable — part de messages en russe, activité
-principale affichée par l'entreprise.
+principale affichée par l'entreprise. Elle retire enfin l'élimination qui
+doublait le critère « vend aux joueurs » chez l'acheteur.
 
 La version 1.3 avait fixé le **calcul du score** : type de chaque critère,
 formule, ordre du calcul, arrondi unique, plafonnement et conduite à tenir quand
@@ -77,7 +78,9 @@ pas collectés tant que le §14 ne le tranche pas.
 - Créateurs non gaming, même très gros.
 - Créateurs présents uniquement sur Instagram ou Facebook (plateformes exclues).
 - Créateurs sous 5 000 ou au-dessus de 300 000 abonnés.
-- Entreprises qui ne vendent pas aux joueurs.
+- Entreprises qui ne vendent pas aux joueurs : hors cible, jamais prioritaires.
+  Ce n'est pas une exclusion automatique (§6.3) : le critère leur coûte 20 points
+  et la décomposition le montre.
 - Agences non gaming.
 - Casino et marques pour adultes, tant que ProveItGo n'a pas décidé (§14).
 - Toute personne contactée à titre privé : uniquement des coordonnées
@@ -410,7 +413,8 @@ Quand `engagement_status` vaut `MEASURED`, les champs `engagement_measure`,
 `engagement_window` et `engagement_read_at` sont obligatoires ; quand il vaut
 `UNKNOWN`, ils restent vides. `engagement_unreadable_count`,
 `engagement_sample_ref` et `engagement_flag` sont facultatifs mais recommandés.
-La migration du schéma est décrite en E1 de `docs/engagement.md`.
+Le schéma, le DDL et le seed sont en 1.4 (E1) ; la migration
+`003_engagement.sql` met à jour une base créée en 1.3.
 
 Champs utiles mais facultatifs : `other_profiles`, `media_kit_url`, `agency`,
 `audience_geography`, `average_views`, `average_concurrent_viewers`,
@@ -480,7 +484,9 @@ publicitaire : cinq visuels pour un même créateur valent une intégration,
 l'identifiant publicitaire restant la preuve de chacune. « Taille » et « Timing »
 valent tout ou rien : l'effectif est dans la bande ou il ne l'est pas,
 l'événement est daté ou il n'existe pas. « Décideur joignable » suit ses trois
-paliers, sans prorata.
+paliers, sans prorata. Un zéro sur « vend aux joueurs » ne rejette pas la fiche :
+il coûte 20 points et reste visible dans la décomposition, mais l'élimination qui
+doublait ce critère a été retirée en 1.4.
 
 Règle **B-02** — L'effectif n'est pas deviné. Il vient soit d'une source
 observable (registre, page équipe, offres d'emploi), soit il reste vide : la
@@ -494,7 +500,11 @@ règle S-03 décide alors si cette absence change la décision.
 | E-B-02 | Catégorie exclue (casino, adulte, tabac, alcool, armes) | REJECTED |
 | E-B-03 | Demande de publicité sans étiquette | REJECTED définitif (X-04) |
 | E-B-04 | Marque de paris sans licence vérifiable | TO REVIEW, puis COMPLIANCE REVIEW |
-| E-B-05 | Ne vend pas aux joueurs | Hors profil |
+
+Règle **B-04** — Un acheteur qui ne vend pas aux joueurs n'est pas exclu : le
+critère vaut zéro et la fiche le montre. L'ancienne élimination qui doublait ce
+critère est retirée, pour la même raison que l'activité côté créateur : une
+mesure qui donne des points ne peut pas aussi rejeter.
 
 ### 6.5 Contacts visés
 
@@ -648,7 +658,8 @@ l'existant : on décide explicitement de rejouer ou non, et on documente.
 Version actuelle : **1.4** (engagement fixé : médiane, fenêtre et source par
 plateforme, exclusions, donnée illisible ; seuils provisoires Rutube 5 % et
 YouTube 10 % ; seuil de 70 confirmé ; intégration comptée par créateur payé ;
-activité notée et non éliminatoire ; seuils observables des critères binaires.
+activité notée et non éliminatoire ; seuils observables des critères binaires ;
+élimination « ne vend pas aux joueurs » retirée, le critère reste à 20 points.
 La 1.3 avait fixé le calcul du score ; la 1.2 avait séparé score et éligibilité).
 
 ---
