@@ -528,6 +528,10 @@ The rotating query pool (creator and buyer blocks, Exa conversion, weekly plan
 and `query_used` tracking) is documented in `docs/query-pool.md` and built by
 `workflows/query_pool.py`; each hunt exposes `hunt_plan` to run it.
 
+The deterministic collection pipeline composes the pool, per-query routing,
+database-first deduplication, batch reading and the evidence ledger; see
+`docs/pipeline.md`.
+
 ### Telegram directories (tgstat + telegramic)
 
 Dedicated wrapper around the paid directory Actor
@@ -585,6 +589,7 @@ Rules the wrapper enforces:
 | Telegram unconfigured | `python -m tests.manual_check_telegram` with an empty `.env` | clear message naming the two settings, exit 1 | ✓ |
 | Telegram real send | `python -m tests.manual_check_telegram` with the real token | `Sent, message id: N` | pending, needs the bot token |
 | Search layer (offline) | `python -m pytest -q` | Exa, SerpApi, Apify and both hunt paths pass, no network | ✓ |
+| Pipeline (offline) | `python -m pytest -q` | dedup, reading and evidence ledger pass, no network | ✓ |
 | Telegram directory (offline) | `python -m pytest -q` | paid Actor mocked; input, cost ceiling, cursor and normalization tested | ✓ |
 | Exa real search | `python -c "from integrations import exa; print(exa.search('gaming studio Russia', num_results=3))"` with `EXA_API_KEY` | 3 rows with `url` and `title` | pending, needs the Exa key |
 | SerpApi real search | `python -c "from integrations import serpapi; print(serpapi.search('site:twitch.tv стример CS2 -казино', num_results=3))"` with `SERPAPI_API_KEY` | 3 rows with `url` and `snippet`; counts against the monthly quota | pending, needs the SerpApi key |

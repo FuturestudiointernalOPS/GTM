@@ -7,6 +7,11 @@ import json
 from abc import ABC, abstractmethod
 from pathlib import Path
 
+from ai.schemas.extraction import (
+    BuyerExtraction,
+    CreatorExtraction,
+)
+
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 
 
@@ -27,6 +32,14 @@ class AIProvider(ABC):
 
     def analyze_creator(self, data: dict) -> dict:
         return self._ask_json("analyze_creator", data)
+
+    def extract_creator(self, data: dict) -> CreatorExtraction:
+        """Turn evidence into creator claims, with their quotes, validated."""
+        return CreatorExtraction.model_validate(self._ask_json("extract_creator", data))
+
+    def extract_buyer(self, data: dict) -> BuyerExtraction:
+        """Turn evidence into buyer claims, with their quotes, validated."""
+        return BuyerExtraction.model_validate(self._ask_json("extract_buyer", data))
 
     def analyze_buyer(self, data: dict) -> dict:
         return self._ask_json("analyze_buyer", data)

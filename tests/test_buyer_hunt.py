@@ -46,6 +46,7 @@ def test_hunt_uses_the_defaults_and_excludes_social_platforms(exa_calls):
             "text": None,
             "query": buyer_hunt.DEFAULT_QUERIES[0],
             "query_used": buyer_hunt.DEFAULT_QUERIES[0],
+            "service": "exa",
         }
     ]
     assert calls[0]["include_domains"] is None
@@ -103,14 +104,19 @@ def test_betting_is_not_searched_by_default():
     assert "ставки" not in joined
 
 
-def test_hunt_plan_keeps_the_pool_id_on_each_page(exa_calls):
-    _, answers = exa_calls
+def test_hunt_plan_keeps_the_pool_id_on_each_page(monkeypatch):
     query = Query(
         id="buyer.ads.esports",
         block="buyers.ads",
         text="реклама erid киберспорт",
+        engine_query='"Реклама" "erid" киберспорт',
+        service="serpapi",
     )
-    answers[query.text] = [_page("https://brand.example")]
+
+    def fake_serpapi(text, **options):
+        return [_page("https://brand.example")]
+
+    monkeypatch.setattr(workflow_search.serpapi, "search", fake_serpapi)
 
     result = buyer_hunt.hunt_plan([query])
 
