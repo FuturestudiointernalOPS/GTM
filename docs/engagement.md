@@ -204,7 +204,7 @@ moyennes de diagnostic. Elles ne rapportent aucun point.
 | Table | Rôle | Historique |
 |---|---|---|
 | `creator_metric_sample` | un élément daté par publication, vidéo ou direct | append-only |
-| `engagement_measure_run` | médiane, fenêtre, taille, drapeaux, hash | append-only |
+| `engagement_measure_run` | médiane, fenêtre, taille, drapeaux, motif, hash | append-only |
 
 `creator_metric_sample` porte le compte de plateforme, le type d'élément, l'URL,
 la date de publication, la valeur, la date de lecture, le motif d'exclusion et le
@@ -212,7 +212,7 @@ snapshot de source.
 
 `engagement_measure_run` porte le compte, la version des critères, la statistique,
 les bornes de fenêtre, le mode, la taille, les illisibles, la valeur, les drapeaux,
-la date de calcul et le hash de l'échantillon.
+le motif, la date de calcul et le hash de l'échantillon.
 
 Un résultat `UNKNOWN` pour une plateforme hors politique n'a pas de
 `measure_kind` : il ne produit pas de ligne `engagement_measure_run`. Les autres
@@ -267,8 +267,8 @@ Jalons indicatifs, alignés sur le calendrier du cadrage : E0 et E1 avant la
 semaine 5 (premiers scores) ; E2 et E3 avant P1 ; E4 et E5 avant le pilote de la
 semaine 8 ; E6 pendant le pilote ; E7 avant la clôture.
 
-État au 16 novembre 2026 : **E0 à E4 sont appliqués côté code**. La recette
-manuelle de 10 créateurs par plateforme reste à exécuter ; E5 à E7 restent à
+État au 16 novembre 2026 : **E0 à E5 sont appliqués côté code**. La recette
+manuelle de 10 créateurs par plateforme reste à exécuter ; E6 et E7 restent à
 faire.
 
 ### E0 — Décision
@@ -340,11 +340,15 @@ La traduction est faite par `integrations/engagement_collectors.py` :
 
 ### E5 — Fiche et revue
 
-- afficher la mesure, l'unité, la fenêtre, la statistique, la taille, les
-  illisibles, la date de lecture et les drapeaux ;
-- ajouter une file « engagement à revoir » pour `UNKNOWN` et `WEAK_SAMPLE` ;
-- permettre à un relecteur de recalculer la médiane depuis l'échantillon ;
-- signaler `DISPERSION` à l'audit, sans changer les points.
+- `creator_engagement_fiche` expose la mesure, l'unité, la fenêtre, la
+  statistique, la taille, les illisibles, la date de lecture, les drapeaux, le
+  motif et la référence du dernier run ;
+- `engagement_review_queue` liste `UNKNOWN`, `UNREADABLE` et `WEAK_SAMPLE` ;
+- `engagement_audit_queue` liste `DISPERSION`, sans changer les points ;
+- `creator_engagement_sample` expose les éléments de l'instantané, et
+  `processing/engagement_review.py:recompute_measure` rejoue la médiane depuis ces
+  lignes ;
+- `matches_stored` compare le recalcul au statut et à la valeur enregistrés.
 
 ### E6 — Pilote et calibration
 

@@ -260,6 +260,21 @@ SELECT score, score_total_exact, score_incomplete, score_proposal,
        score_bounds_lower, score_bounds_upper
 FROM creator_fiche;
 
+-- Fiche d'engagement, files de revue et d'audit, échantillon.
+SELECT reference, engagement_status, engagement_value, engagement_flags,
+       review_reason, audit_flag
+FROM creator_engagement_fiche;
+
+SELECT reference, review_reason
+FROM engagement_review_queue;
+
+SELECT reference, audit_flag
+FROM engagement_audit_queue;
+
+SELECT item_url, value, exclusion_reason, in_measured_window
+FROM creator_engagement_sample
+ORDER BY published_at;
+
 -- Acheteur : identité fiscale et vue de contrat.
 WITH r AS (
     INSERT INTO record (kind, criteria_version)

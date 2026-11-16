@@ -497,7 +497,8 @@ preuve, qui supersède l'ancienne côté PostgreSQL.
 | Vue | Filtre | Usage |
 |---|---|---|
 | File de revue | `workflow_status` ∈ {`TO_REVIEW`, `MANUAL_REVIEW`} | traiter les doutes |
-| Engagement à revoir | `engagement_status = UNKNOWN` ou `engagement_flag` non vide | compléter ou auditer la mesure |
+| Engagement à revoir | `engagement_status = UNKNOWN` ou `engagement_flag` contient `UNREADABLE`/`WEAK_SAMPLE` | traiter la mesure |
+| Engagement à auditer | `engagement_flag` contient `DISPERSION` | audit, sans changer les points |
 | Conformité | `workflow_status = COMPLIANCE_REVIEW` | décision humaine obligatoire |
 | À auditer | `workflow_status = PRESELECTED` (créateurs) | audit ProveItGo |
 | Vivier | `workflow_status` ∈ {`POOL`, `QUALIFIED`, `APPROVED`} | créateurs prêts |
@@ -521,7 +522,7 @@ preuve, qui supersède l'ancienne côté PostgreSQL.
 | `buyer` | identité légale et champs acheteur | versionné par les faits |
 | `creator_platform_account` | un compte par plateforme | métriques datées |
 | `creator_metric_sample` | un élément daté par publication, vidéo ou direct | append-only |
-| `engagement_measure_run` | médiane, fenêtre, taille, drapeaux, hash | append-only |
+| `engagement_measure_run` | médiane, fenêtre, taille, drapeaux, motif, hash | append-only |
 | `contact` | contact professionnel public | `contact_event` |
 | `contact_event` | préparation, envoi, réponse, opt-out | append-only |
 | `source` | adresse stable | — |
@@ -543,9 +544,8 @@ preuve, qui supersède l'ancienne côté PostgreSQL.
 | `audit_log` | audit technique | append-only |
 | `record_merge` | fusion de doublons | append-only |
 
-Les deux tables de mesure (`creator_metric_sample`, `engagement_measure_run`) et
-les champs d'engagement sont la cible 1.4 ; le DDL les crée en E1
-(`docs/engagement.md`).
+Les deux tables de mesure et les champs d'engagement sont en place depuis E1 ;
+`003_engagement.sql` migre une base 1.3.
 
 ### 5.2 Relations
 
@@ -600,6 +600,10 @@ erDiagram
 - La ligne d'engagement référence `engagement_measure_run` : la médiane, la
   fenêtre, la taille de l'échantillon, les illisibles et le hash des éléments sont
   conservés. Un recalcul ne relit pas la plateforme.
+- Les vues `creator_engagement_fiche`, `engagement_review_queue`,
+  `engagement_audit_queue` et `creator_engagement_sample` exposent la fiche, les
+  files et l'échantillon ; le recalcul passe par
+  `processing/engagement_review.py`.
 - Q-06 est donc satisfait : un score de 74 se décompose en lignes vérifiables,
   pas seulement en un total ; et le total exact permet de distinguer 74 de 74,9.
 - `criteria_version` stocke la définition structurée. La version 1.4 est semée

@@ -654,6 +654,7 @@ CREATE TABLE engagement_measure_run (
     read_at                     timestamptz NOT NULL,
     sample_hash                 text NOT NULL,
     flags                       text[] NOT NULL DEFAULT '{}',
+    reason                      text,
     computed_at                 timestamptz NOT NULL DEFAULT now(),
     computed_by                 text NOT NULL,
     CONSTRAINT engagement_run_measured CHECK (
@@ -1310,6 +1311,106 @@ LEFT JOIN LATERAL (
     LIMIT 1
 ) latest_score ON true
 WHERE r.kind = 'CREATOR';
+
+-- Fiche d'engagement : le profil principal, la dernière mesure et ses diagnostics.
+CREATE VIEW creator_engagement_fiche AS
+SELECT
+    r.id AS record_id,
+    r.reference,
+    c.display_name,
+    p.name AS main_platform,
+    pp.id AS creator_platform_account_id,
+    pp.handle,
+    pp.followers,
+    pp.followers_read_at,
+    pp.engagement_status,
+    pp.engagement_measure,
+    pp.engagement_statistic,
+    pp.engagement_value,
+    pp.engagement_sample_size,
+    pp.engagement_unreadable_count,
+    pp.engagement_window_start,
+    pp.engagement_window_end,
+    pp.engagement_window_mode,
+    pp.engagement_read_at,
+    pp.engagement_sample_hash,
+    pp.engagement_flags,
+    latest_run.id AS engagement_measure_run_id,
+    latest_run.computed_at AS engagement_computed_at,
+    latest_run.reason AS engagement_reason,
+    CASE
+        WHEN pp.engagement_status IS DISTINCT FROM 'MEASURED' THEN 'UNKNOWN'
+        WHEN 'UNREADABLE' = ANY(pp.engagement_flags) THEN 'UNREADABLE'
+        WHEN 'WEAK_SAMPLE' = ANY(pp.engagement_flags) THEN 'WEAK_SAMPLE'
+        ELSE NULL
+    END AS review_reason,
+    ('DISPERSION' = ANY(pp.engagement_flags)) AS audit_flag
+FROM record r
+JOIN creator c ON c.record_id = r.id
+JOIN creator_platform_account pp
+    ON pp.record_id = r.id
+   AND pp.is_primary
+LEFT JOIN platform p ON p.id = pp.platform_id
+LEFT JOIN LATERAL (
+    SELECT emr.id, emr.computed_at, emr.reason
+    FROM engagement_measure_run emr
+    WHERE emr.creator_platform_account_id = pp.id
+    ORDER BY emr.computed_at DESC, emr.id DESC
+    LIMIT 1
+) latest_run ON true
+WHERE r.kind = 'CREATOR';
+
+-- File de revue : ce qui empêche de lire la mesure comme une mesure.
+CREATE VIEW engagement_review_queue AS
+SELECT *
+FROM creator_engagement_fiche
+WHERE review_reason IS NOT NULL
+ORDER BY
+    CASE review_reason
+        WHEN 'UNKNOWN' THEN 1
+        WHEN 'UNREADABLE' THEN 2
+        WHEN 'WEAK_SAMPLE' THEN 3
+        ELSE 4
+    END,
+    reference;
+
+-- File d'audit : la dispersion ne change pas les points, elle appelle une relecture.
+CREATE VIEW engagement_audit_queue AS
+SELECT *
+FROM creator_engagement_fiche
+WHERE audit_flag;
+
+-- Éléments de l'instantané, pour qu'un relecteur puisse refaire la médiane.
+-- La sélection exacte (plafond, repli) est rejouée par la fonction de mesure.
+CREATE VIEW creator_engagement_sample AS
+SELECT
+    ef.record_id,
+    ef.creator_platform_account_id,
+    ef.engagement_measure_run_id,
+    emr.read_at AS engagement_read_at,
+    emr.window_start,
+    emr.window_end,
+    emr.window_mode,
+    item.id AS sample_id,
+    item.item_url,
+    item.item_kind,
+    item.published_at,
+    item.value,
+    item.readable,
+    item.exclusion_reason,
+    item.read_at AS item_read_at,
+    (
+        item.readable
+        AND item.exclusion_reason IS NULL
+        AND emr.window_start IS NOT NULL
+        AND item.published_at >= emr.window_start
+        AND item.published_at <= emr.window_end
+    ) AS in_measured_window
+FROM creator_engagement_fiche ef
+JOIN engagement_measure_run emr ON emr.id = ef.engagement_measure_run_id
+JOIN creator_metric_sample item
+    ON item.creator_platform_account_id = ef.creator_platform_account_id
+   AND item.read_at = emr.read_at;
 
 -- La fiche acheteur expose les champs de §6.6. Les références d'étiquettes et
 -- le compte d'intégrations sur 90 jours sont recalculés depuis les publicités.

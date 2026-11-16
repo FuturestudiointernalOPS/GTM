@@ -141,6 +141,8 @@ Le seeder crée la structure, pas les vues de travail. Créer dans Baserow les
 vues décrites dans `docs/data-model.md` §4.5 :
 
 - File de revue ;
+- Engagement à revoir ;
+- Engagement à auditer ;
 - Conformité ;
 - À auditer ;
 - Vivier ;
