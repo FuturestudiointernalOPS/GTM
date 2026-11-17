@@ -8,6 +8,7 @@ Why BeautifulSoup: it strips the HTML and keeps the readable text, without a
 headless browser. Dynamic or blocked pages are a platform problem and go to a
 dedicated Actor instead.
 """
+
 import logging
 from dataclasses import dataclass
 

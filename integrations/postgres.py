@@ -11,6 +11,7 @@ A record rejected by an elimination, or outside the profile, writes nothing: tha
 is a decision, not a score of zero. A measure from a platform outside the policy
 writes nothing either, because no measure run exists for it.
 """
+
 import json
 from decimal import Decimal
 from fractions import Fraction
@@ -56,10 +57,9 @@ def connect(dsn: str | None = None, *, driver=None):
 
     target = dsn or settings.DATABASE_URL
     if not target:
-        raise PostgresNotConfigured(
-            "DATABASE_URL is not set: add it to the .env file"
-        )
+        raise PostgresNotConfigured("DATABASE_URL is not set: add it to the .env file")
     return driver.connect(target)
+
 
 INSERT_MEASURE = """
 INSERT INTO engagement_measure_run (
@@ -488,9 +488,7 @@ def write_review_decision(
         if score is None:
             raise ValueError("a record without a score cannot be declared eligible")
         if current not in eligibility.REVIEW_STATUSES:
-            raise ValueError(
-                f"record {record_id} is not under review: {current}"
-            )
+            raise ValueError(f"record {record_id} is not under review: {current}")
 
         cursor.execute(
             INSERT_ELIGIBILITY_DECISION,
@@ -534,13 +532,9 @@ def write_exception(
     responsible = (owner or "").strip()
     reason = (justification or "").strip()
     if not responsible or not reason or not valid_until:
-        raise ValueError(
-            "an exception needs an owner, a justification and an end date"
-        )
+        raise ValueError("an exception needs an owner, a justification and an end date")
 
-    text = (
-        f"dérogation de {responsible}, valable jusqu'au {valid_until} : {reason}"
-    )
+    text = f"dérogation de {responsible}, valable jusqu'au {valid_until} : {reason}"
 
     with connection.cursor() as cursor:
         kind, current, score = _read_fiche(cursor, record_id)

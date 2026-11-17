@@ -1,4 +1,5 @@
 """Manual check: send a fake creator to the configured AI and print the answer."""
+
 from ai import get_ai_provider
 
 provider = get_ai_provider()  # DeepSeek today; chosen by AI_PROVIDER in .env

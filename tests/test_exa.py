@@ -1,4 +1,5 @@
 """Tests for the Exa search wrapper. No network, no real API key."""
+
 from types import SimpleNamespace
 from typing import ClassVar
 

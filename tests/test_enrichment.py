@@ -4,6 +4,7 @@ The step is the only place where a stored fact becomes a criterion value. These
 tests pin the four rules it must never break: no source, no fact; a
 contradiction is not a choice; out of domain is not capped; absent is not zero.
 """
+
 from dataclasses import asdict
 from fractions import Fraction
 

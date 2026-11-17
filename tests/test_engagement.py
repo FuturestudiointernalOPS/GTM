@@ -3,6 +3,7 @@
 The measure is tested on its own, then handed to the score to prove the two
 stages agree on the points. M1 and M2 carry that double check.
 """
+
 from datetime import datetime, timedelta, timezone
 from fractions import Fraction
 
@@ -139,7 +140,9 @@ def test_m5_youtube_falls_back_to_the_wider_window():
 
 def test_m6_an_even_sample_gives_an_exact_median():
     values = [9_000, 10_000, 14_000, 20_000, 8_000, 30_000]
-    sample = [item(value=value, days_ago=index + 1) for index, value in enumerate(values)]
+    sample = [
+        item(value=value, days_ago=index + 1) for index, value in enumerate(values)
+    ]
 
     measure = measure_engagement(sample, profile())
 
@@ -233,9 +236,7 @@ def test_the_same_snapshot_gives_the_same_measure():
 
 
 def test_items_from_another_platform_are_ignored():
-    sample = items(12) + items(
-        12, platform="vk_video", kind="LONG_VIDEO", value=99_000
-    )
+    sample = items(12) + items(12, platform="vk_video", kind="LONG_VIDEO", value=99_000)
 
     measure = measure_engagement(sample, profile("telegram"))
 
@@ -251,7 +252,9 @@ def test_a_measure_without_kind_carries_no_run_reference():
     )
 
     assert measure.measure_kind is None
-    applied = apply_engagement_measure(CreatorMeasures(), measure, measure_run_id="run-1")
+    applied = apply_engagement_measure(
+        CreatorMeasures(), measure, measure_run_id="run-1"
+    )
     assert applied.engagement_measure_run_id is None
 
 
@@ -334,18 +337,14 @@ def test_hash_ignores_timestamp_representation():
         item(
             value=12_000,
             days_ago=index + 1,
-            published_at=(
-                datetime.fromisoformat(READ) - timedelta(days=index + 1)
-            )
+            published_at=(datetime.fromisoformat(READ) - timedelta(days=index + 1))
             .astimezone(timezone(timedelta(hours=1)))
             .isoformat(),
         )
         for index in range(12)
     ]
 
-    assert measure_engagement(first, profile()) == measure_engagement(
-        second, profile()
-    )
+    assert measure_engagement(first, profile()) == measure_engagement(second, profile())
 
 
 def test_unsupported_platform_is_unknown():

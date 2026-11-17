@@ -11,6 +11,7 @@ Usage:
 The database itself is created in Baserow first; this tool fills it. See
 db/README.md for the full step-by-step procedure.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -303,9 +304,7 @@ def _load_fields(states: dict[str, TableState], client: BaserowClient) -> None:
         if state.table_id is None:
             continue
         fields = client.list_fields(state.table_id)
-        state.fields = {
-            field["name"]: field for field in fields if field.get("name")
-        }
+        state.fields = {field["name"]: field for field in fields if field.get("name")}
 
 
 # ---------------------------------------------------------------------------
@@ -406,7 +405,12 @@ def _ensure_primary(
     state.fields.pop(primary.get("name"), None)
     state.fields[spec["name"]] = updated
     result.updated_fields.append(f"{state.name}.{spec['name']} (primary renamed)")
-    log.info("renamed primary field %s.%s to %s", state.name, primary.get("name"), spec["name"])
+    log.info(
+        "renamed primary field %s.%s to %s",
+        state.name,
+        primary.get("name"),
+        spec["name"],
+    )
 
 
 def _primary_spec(table_schema: dict) -> dict:
@@ -449,7 +453,9 @@ def _ensure_field(
         return
 
     if dry_run:
-        log.info("[dry-run] would create field %s.%s (%s)", state.name, name, spec["type"])
+        log.info(
+            "[dry-run] would create field %s.%s (%s)", state.name, name, spec["type"]
+        )
         result.created_fields.append(f"{state.name}.{name}")
         return
 

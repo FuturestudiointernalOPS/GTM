@@ -4,6 +4,7 @@ One candidate in, one score out. The tests cover three design choices: evidence
 is anchored to the page, it is partitioned per record, and a claim survives only
 if its verbatim quote really appears on the page.
 """
+
 import json
 from datetime import datetime, timedelta
 
@@ -85,7 +86,9 @@ class FakeProvider(AIProvider):
         return self.reply(json.loads(user))
 
 
-def candidate(record_id="rec-1", url="https://vk.com/creator", share=60, kind="CREATOR"):
+def candidate(
+    record_id="rec-1", url="https://vk.com/creator", share=60, kind="CREATOR"
+):
     return Candidate(
         kind=kind,
         record_id=record_id,
@@ -284,7 +287,10 @@ def test_pages_become_candidates():
 
 def test_a_page_without_text_or_known_query_is_skipped():
     pages = [
-        {"url": "https://vk.com/x", "query_used": "creator.general.telegram_rating_2026"},
+        {
+            "url": "https://vk.com/x",
+            "query_used": "creator.general.telegram_rating_2026",
+        },
         {"url": "https://vk.com/y", "query_used": "not.a.query", "snippet": "txt"},
         {"query_used": "creator.general.telegram_rating_2026", "snippet": "txt"},
     ]

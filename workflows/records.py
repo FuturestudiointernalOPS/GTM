@@ -13,6 +13,7 @@ Identity (scope §3.4):
 
 Creation is idempotent: running twice on the same page returns the same ids.
 """
+
 import re
 from dataclasses import dataclass, replace
 from typing import Protocol

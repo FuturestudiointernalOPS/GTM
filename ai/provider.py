@@ -3,6 +3,7 @@
 Workflows only talk to AIProvider, never to a specific model.
 Prompts live in ai/prompts/ so they can change without touching the code.
 """
+
 import json
 from abc import ABC, abstractmethod
 from pathlib import Path

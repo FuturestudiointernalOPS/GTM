@@ -15,6 +15,7 @@ Rules applied (V-03, V-04, V-08):
   answer is ``PENDING`` — never ``NOT_FOUND``, which would accuse a page of not
   being registered because a website was down.
 """
+
 from dataclasses import dataclass
 
 from processing.deduplication import normalize_url
@@ -82,9 +83,7 @@ def compare(
     if not search.entries:
         return Check(RKN_REGISTRY, NOT_FOUND, (query, "NO_ENTRY"))
 
-    matching = [
-        entry for entry in search.entries if _lists(entry, target)
-    ]
+    matching = [entry for entry in search.entries if _lists(entry, target)]
     if matching:
         # The identifier is the strongest discriminant when both sides have one.
         identifiers = {entry.account_id for entry in matching if entry.account_id}
@@ -110,7 +109,9 @@ def compare(
 
 def _name_key(name: str) -> str:
     """A soft comparison key: case, spaces, punctuation and emoji removed."""
-    return "".join(character for character in (name or "").casefold() if character.isalnum())
+    return "".join(
+        character for character in (name or "").casefold() if character.isalnum()
+    )
 
 
 def _lists(entry: RegistryEntry, target: str) -> bool:

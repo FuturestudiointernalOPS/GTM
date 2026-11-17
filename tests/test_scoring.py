@@ -4,6 +4,7 @@ The twelve cases below are the ones frozen in ``docs/scoring.md``. Their expecte
 values are signed: if the code disagrees with one of them, the code is wrong, not
 the test.
 """
+
 from fractions import Fraction
 
 from processing.engagement import CONCURRENT_VIEWERS, VIEWS_PER_ITEM, EngagementMeasure
@@ -304,9 +305,7 @@ def test_v14_youtube_threshold_is_ten_percent():
 
 def test_total_is_exact_and_lines_sum_to_it():
     result = score_creator(creator())
-    total = sum(
-        item.points for item in result.lines if item.points is not None
-    )
+    total = sum(item.points for item in result.lines if item.points is not None)
 
     assert total == result.total_exact
     assert isinstance(result.total_exact, Fraction)
@@ -406,8 +405,14 @@ def test_buyer_without_enrichment_goes_to_review():
 
 
 def test_half_of_the_audience_is_not_a_majority():
-    assert line(score_creator(creator(russian_share=Fraction(50))), "audience_fit").points == 0
-    assert line(score_creator(creator(russian_share=Fraction(51))), "audience_fit").points == 10
+    assert (
+        line(score_creator(creator(russian_share=Fraction(50))), "audience_fit").points
+        == 0
+    )
+    assert (
+        line(score_creator(creator(russian_share=Fraction(51))), "audience_fit").points
+        == 10
+    )
 
 
 # --- table integrity --------------------------------------------------------

@@ -7,6 +7,7 @@ carry a ratio or points, which belong to ``processing/scoring.py``.
 The function is pure: a sample in, a measure out. No network, no clock, no model.
 The same snapshot always yields the same median and the same hash.
 """
+
 import hashlib
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -40,12 +41,8 @@ WEAK_UP_TO = 9
 _STRUCTURAL_EXCLUSIONS = frozenset({"PINNED", "PAID_AD", "CLIP", "LIVE"})
 _UNREADABLE_REASON = "UNREADABLE"
 
-_KNOWN_KINDS = frozenset(
-    {"POST", "LONG_VIDEO", "SHORT", "STREAM", "VOD", "CLIP"}
-)
-_KNOWN_EXCLUSIONS = frozenset(
-    {"PINNED", "PAID_AD", "CLIP", "LIVE", "UNREADABLE"}
-)
+_KNOWN_KINDS = frozenset({"POST", "LONG_VIDEO", "SHORT", "STREAM", "VOD", "CLIP"})
+_KNOWN_EXCLUSIONS = frozenset({"PINNED", "PAID_AD", "CLIP", "LIVE", "UNREADABLE"})
 
 
 @dataclass(frozen=True)
@@ -279,9 +276,7 @@ def _window(
     )
     kept = [item for _, item in in_window[:max_items]]
 
-    candidates = [
-        item for item in kept if _reason(item) not in _STRUCTURAL_EXCLUSIONS
-    ]
+    candidates = [item for item in kept if _reason(item) not in _STRUCTURAL_EXCLUSIONS]
     unreadable = [item for item in candidates if not _is_readable(item)]
     readable = [item for item in candidates if _is_readable(item)]
     return candidates, unreadable, readable
@@ -396,12 +391,9 @@ def _validate_item(item: EngagementItem) -> None:
             f"unknown engagement exclusion reason: {item.exclusion_reason!r}"
         )
     if item.value is not None and (
-        isinstance(item.value, bool)
-        or not isinstance(item.value, (int, Fraction))
+        isinstance(item.value, bool) or not isinstance(item.value, (int, Fraction))
     ):
-        raise ValueError(
-            "an engagement value must be an integer, a Fraction, or None"
-        )
+        raise ValueError("an engagement value must be an integer, a Fraction, or None")
 
 
 def _has_out_of_domain(candidates: list[EngagementItem]) -> bool:

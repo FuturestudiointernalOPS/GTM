@@ -5,6 +5,7 @@ must point to a fact that already exists; a claim about a key with no evidence
 is rejected. This is the code form of the scope rule that keeps the model from
 inventing facts.
 """
+
 from dataclasses import dataclass, field
 
 # Confidence says how sure the reader is; the proof level says what kind of fact

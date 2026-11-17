@@ -1,4 +1,5 @@
 """Tests for the buyer hunt. No network: Exa and Apify are replaced."""
+
 import pytest
 
 from workflows import buyer_hunt

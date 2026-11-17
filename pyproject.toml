@@ -1,0 +1,25 @@
+# Tool configuration. Dependencies stay in requirements*.txt: this file only
+# tells the pinned tools how to run, so a laptop and CI agree.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+markers = [
+    "integration: needs a real service (skipped unless configured)",
+]
+
+[tool.coverage.run]
+source = ["ai", "config", "db", "integrations", "processing", "workflows"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

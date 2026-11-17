@@ -3,6 +3,7 @@
 The table is pure: same checks, same verdict. The tests walk it row by row, and
 check that doubt always suspends rather than passes.
 """
+
 import pytest
 
 from processing import eligibility
@@ -185,7 +186,9 @@ def test_the_registry_source_is_kept_with_the_check():
         creator(rkn_source_url="https://example.test/registry/42")
     )
 
-    assert check(decision, RKN_REGISTRY).source_url == "https://example.test/registry/42"
+    assert (
+        check(decision, RKN_REGISTRY).source_url == "https://example.test/registry/42"
+    )
 
 
 def test_every_creation_decision_carries_at_least_one_check():

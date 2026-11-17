@@ -11,6 +11,7 @@ function of measures that other stages already collected and sourced, so the
 same facts always give the same integer. Eligibility is never decided here
 (H-04): a high score cannot repair a missing registry check.
 """
+
 from dataclasses import dataclass, replace
 from decimal import Decimal
 from fractions import Fraction
@@ -521,7 +522,9 @@ def _sells_to_gamers(measures: BuyerMeasures) -> ScoreLine:
     return _measured(
         **base,
         points=Fraction(20 if measures.gaming_core else 0),
-        measure="gaming au cœur de l'activité" if measures.gaming_core else "hors gaming",
+        measure="gaming au cœur de l'activité"
+        if measures.gaming_core
+        else "hors gaming",
     )
 
 
@@ -577,9 +580,7 @@ def _ratio_points(measure: Fraction, threshold: Fraction, maximum: int) -> Fract
     return Fraction(maximum) * min(Fraction(1), Fraction(measure) / threshold)
 
 
-def _engagement_flags(
-    measures: CreatorMeasures, sample: int
-) -> tuple[str, ...]:
+def _engagement_flags(measures: CreatorMeasures, sample: int) -> tuple[str, ...]:
     flags = list(measures.engagement_flags)
     if sample < ENGAGEMENT_FULL_SAMPLE and "WEAK_SAMPLE" not in flags:
         flags.insert(0, "WEAK_SAMPLE")

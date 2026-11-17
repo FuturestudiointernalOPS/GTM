@@ -1,4 +1,5 @@
 """Tests for the creator hunt. No network: Exa and Apify are replaced."""
+
 from decimal import Decimal
 
 import pytest

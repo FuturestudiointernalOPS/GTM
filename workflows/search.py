@@ -4,6 +4,7 @@ Why a separate module: a creator hunt and a buyer hunt differ in their queries
 and domain filters, not in how they call Exa and Apify. Keeping the two calls
 here means a retry, a deduplication rule or a field change is fixed once.
 """
+
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass

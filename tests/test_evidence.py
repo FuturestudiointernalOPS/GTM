@@ -1,4 +1,5 @@
 """Tests for the evidence ledger and the no-invented-facts rule."""
+
 from processing.evidence import (
     OBSERVED,
     UNVERIFIED,

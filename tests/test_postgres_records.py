@@ -3,6 +3,7 @@
 The fake answers each statement in order and keeps the log, so the test checks
 both the shape of the SQL and the values it would send. No server, no driver.
 """
+
 import re
 from pathlib import Path
 
@@ -118,9 +119,7 @@ def test_find_creator_without_a_row_returns_nothing():
 
 
 def test_create_creator_writes_the_record_the_creator_and_the_account():
-    connection = FakeConnection(
-        answers=[("platform-1",), ("rec-9",), None, ("acc-9",)]
-    )
+    connection = FakeConnection(answers=[("platform-1",), ("rec-9",), None, ("acc-9",)])
     store = PostgresRecordStore(connection)
 
     keys = store.create_creator(identity(), "1.4")
@@ -148,9 +147,7 @@ def test_create_creator_writes_the_record_the_creator_and_the_account():
 
 
 def test_create_creator_keeps_the_youtube_at_sign_in_the_handle():
-    connection = FakeConnection(
-        answers=[("platform-1",), ("rec-9",), None, ("acc-9",)]
-    )
+    connection = FakeConnection(answers=[("platform-1",), ("rec-9",), None, ("acc-9",)])
     store = PostgresRecordStore(connection)
 
     store.create_creator(
@@ -251,9 +248,7 @@ def test_create_buyer_puts_an_ogrn_in_the_ogrn_column():
     connection = FakeConnection(answers=[("rec-3",)])
     store = PostgresRecordStore(connection)
 
-    store.create_buyer(
-        buyer(tax_id="1027700132195", legal_name="ООО Тест"), "1.4"
-    )
+    store.create_buyer(buyer(tax_id="1027700132195", legal_name="ООО Тест"), "1.4")
 
     params = connection.log[1][1]
     assert params[3] is None

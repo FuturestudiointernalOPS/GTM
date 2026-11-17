@@ -9,6 +9,7 @@ qualification (``REGULATORY_PENDING``) instead of rejecting anyone.
 A document sent by the company is not read here; §3.6 and V-18 say it is not a
 proof, and this client only reads official exports.
 """
+
 import json
 import logging
 
@@ -56,7 +57,9 @@ def is_configured() -> bool:
     return bool(configured_countries())
 
 
-def parse_registry(text: str, *, country: str, source_url: str | None = None) -> LicenceRegistry:
+def parse_registry(
+    text: str, *, country: str, source_url: str | None = None
+) -> LicenceRegistry:
     """Read one JSON export into records.
 
     The export is a list of objects with at least ``number`` and ``holder``;

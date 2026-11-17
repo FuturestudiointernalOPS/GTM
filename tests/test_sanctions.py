@@ -3,6 +3,7 @@
 The screen is generous by design: a match opens a review, it never rejects. What
 must not happen is a clear result obtained from a list nobody could read.
 """
+
 import pytest
 
 from config import settings
@@ -45,9 +46,7 @@ def test_an_alias_is_screened_too():
 
 
 def test_a_listed_name_inside_a_longer_company_name_is_a_match():
-    check = screen(
-        "ООО Ромашка Групп", screening(("OFAC_SDN", ("Ромашка",)))
-    )
+    check = screen("ООО Ромашка Групп", screening(("OFAC_SDN", ("Ромашка",))))
 
     assert check.status == MANUAL_REVIEW
 
@@ -199,9 +198,7 @@ def test_the_client_screens_with_the_loaded_lists(monkeypatch):
         settings, "SANCTIONS_LIST_URLS", "OFAC_SDN=https://a.example/sdn.csv"
     )
 
-    check = client.screen(
-        "ООО Ромашка", fetch=lambda url: "Name\nООО Ромашка\n"
-    )
+    check = client.screen("ООО Ромашка", fetch=lambda url: "Name\nООО Ромашка\n")
 
     assert check.status == MANUAL_REVIEW
 

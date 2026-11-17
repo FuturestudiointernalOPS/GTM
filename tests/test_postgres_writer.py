@@ -3,6 +3,7 @@
 No driver and no server: the fake records every statement and its parameters, so
 the column list and the values are checked before they ever reach a database.
 """
+
 import json
 import re
 from decimal import Decimal
@@ -269,9 +270,7 @@ class _DecisionCursor:
 
 
 class DecisionConnection:
-    def __init__(
-        self, status="NEW", proposal=None, exists=True, run_id="rec-1"
-    ):
+    def __init__(self, status="NEW", proposal=None, exists=True, run_id="rec-1"):
         self.log = []
         self.status = status
         self.proposal = proposal
@@ -283,9 +282,7 @@ class DecisionConnection:
 
 
 def decision(connection, result, record_id="rec-1"):
-    return write_decision(
-        connection, record_id=record_id, result=result, actor="test"
-    )
+    return write_decision(connection, record_id=record_id, result=result, actor="test")
 
 
 def transition(connection):
@@ -479,9 +476,7 @@ def statements(connection):
 
 def transition_of(connection):
     return next(
-        params
-        for sql, params in connection.log
-        if "SELECT transition_record" in sql
+        params for sql, params in connection.log if "SELECT transition_record" in sql
     )
 
 
@@ -593,7 +588,9 @@ def test_a_scoreless_fiche_cannot_be_declared_eligible():
             connection, record_id="rec-1", decision=decision, actor="verification"
         )
 
-    assert not any("INSERT INTO eligibility_check" in sql for sql in statements(connection))
+    assert not any(
+        "INSERT INTO eligibility_check" in sql for sql in statements(connection)
+    )
 
 
 def test_a_rejected_fiche_is_not_eligible():
@@ -658,8 +655,7 @@ def verdict_of(connection):
     return next(
         params
         for sql, params in connection.log
-        if "INSERT INTO eligibility_decision " in sql
-        and "exception_owner" not in sql
+        if "INSERT INTO eligibility_decision " in sql and "exception_owner" not in sql
     )
 
 
@@ -793,9 +789,7 @@ def test_an_exception_qualifies_the_fiche_and_keeps_its_terms():
     assert event == "event-9"
 
     _, params = next(
-        (sql, params)
-        for sql, params in connection.log
-        if "exception_owner" in sql
+        (sql, params) for sql, params in connection.log if "exception_owner" in sql
     )
     assert params[1] == "EXCEPTION_APPROVED"
     assert params[5] == "Direction"
@@ -829,9 +823,7 @@ def test_an_exception_needs_its_three_terms():
         terms.update(missing)
 
         with pytest.raises(ValueError, match="owner|justification|end date"):
-            write_exception(
-                connection, record_id="rec-1", actor="admin", **terms
-            )
+            write_exception(connection, record_id="rec-1", actor="admin", **terms)
 
         assert connection.log == []
 

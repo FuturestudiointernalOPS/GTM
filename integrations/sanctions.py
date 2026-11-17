@@ -10,6 +10,7 @@ objects carrying a name and aliases, or a CSV whose header names a name column.
 Anything else is treated as an unreadable source, which suspends the screening
 instead of clearing the name.
 """
+
 import csv
 import io
 import json
@@ -180,9 +181,7 @@ def _csv_names(text: str, *, source: str) -> tuple[str, ...]:
         # No usable header: assume the first column holds the name, and skip the
         # first row only when it looks like a header.
         body = rows[1:] if _looks_like_a_header(rows[0]) else rows
-        return _unique(
-            row[0].strip() for row in body if row and row[0].strip()
-        )
+        return _unique(row[0].strip() for row in body if row and row[0].strip())
 
     names: list[str] = []
     for row in rows[1:]:

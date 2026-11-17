@@ -5,6 +5,7 @@ supervisor's own Telegram account. Run from the repo root:
 
     python -m tests.manual_check_telegram
 """
+
 from integrations import telegram
 
 

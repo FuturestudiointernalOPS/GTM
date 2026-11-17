@@ -1,4 +1,5 @@
 """Tests for the SerpApi backend. No network, no real key."""
+
 import httpx
 import pytest
 import respx
@@ -119,9 +120,7 @@ def test_a_server_error_with_an_html_body_is_still_retried():
 @respx.mock
 def test_a_bad_request_is_not_retried_and_the_key_is_masked():
     route = respx.get(URL).mock(
-        return_value=httpx.Response(
-            400, json={"error": f"Invalid API key {FAKE_KEY}"}
-        )
+        return_value=httpx.Response(400, json={"error": f"Invalid API key {FAKE_KEY}"})
     )
 
     with pytest.raises(serpapi.SerpApiError) as caught:

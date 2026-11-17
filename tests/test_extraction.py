@@ -3,6 +3,7 @@
 A claim becomes a fact only when the key is known, a source exists, and that
 source is not an inference. These tests pin each of the three refusals.
 """
+
 from processing.enrichment import CREATOR_FACT_KEYS
 from processing.evidence import (
     DECLARED,
@@ -30,7 +31,9 @@ def ledger_with(key, proof_level=OBSERVED, url=None):
 
 
 def test_a_proven_claim_becomes_a_fact():
-    result = extract({"gaming_share": 60}, ledger_with("gaming_share"), allowed=CREATOR_FACT_KEYS)
+    result = extract(
+        {"gaming_share": 60}, ledger_with("gaming_share"), allowed=CREATOR_FACT_KEYS
+    )
 
     assert result.rejected == ()
     assert len(result.facts) == 1
@@ -80,8 +83,18 @@ def test_an_inferred_fact_is_rejected():
 
 def test_a_later_observed_fact_supersedes_an_inference():
     ledger = EvidenceLedger()
-    ledger.add("gaming_share", 20, source("gaming_share", "https://old.test"), proof_level=INFERRED)
-    ledger.add("gaming_share", 60, source("gaming_share", "https://new.test"), proof_level=OBSERVED)
+    ledger.add(
+        "gaming_share",
+        20,
+        source("gaming_share", "https://old.test"),
+        proof_level=INFERRED,
+    )
+    ledger.add(
+        "gaming_share",
+        60,
+        source("gaming_share", "https://new.test"),
+        proof_level=OBSERVED,
+    )
 
     result = extract({"gaming_share": 60}, ledger, allowed=CREATOR_FACT_KEYS)
 
@@ -90,7 +103,9 @@ def test_a_later_observed_fact_supersedes_an_inference():
 
 
 def test_a_null_claim_is_not_a_claim():
-    result = extract({"gaming_share": None}, EvidenceLedger(), allowed=CREATOR_FACT_KEYS)
+    result = extract(
+        {"gaming_share": None}, EvidenceLedger(), allowed=CREATOR_FACT_KEYS
+    )
 
     assert result.facts == ()
     assert result.rejected == ()
