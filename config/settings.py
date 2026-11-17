@@ -1,4 +1,5 @@
 """Central project settings. Values come from .env, with safe defaults."""
+
 from config.environment import optional
 
 # Which AI to use. Change it in .env to switch model, without touching the code.
@@ -6,6 +7,18 @@ AI_PROVIDER = optional("AI_PROVIDER", "deepseek")
 
 # Model name. Empty means "use the provider's default".
 AI_MODEL = optional("AI_MODEL")
+
+# DeepSeek credentials and model override. The key is required only when the
+# DeepSeek provider is built, so tests and dry runs need no secret.
+DEEPSEEK_API_KEY = optional("DEEPSEEK_API_KEY")
+DEEPSEEK_MODEL = optional("DEEPSEEK_MODEL")
+
+# Engagement sample: an Apify Actor run per creator. Empty means "no actor
+# chosen": creators then go to review, as the engagement contract expects. The
+# input is JSON text; {platform} and {url} are replaced per candidate.
+ENGAGEMENT_ACTOR_ID = optional("ENGAGEMENT_ACTOR_ID")
+ENGAGEMENT_ACTOR_INPUT = optional("ENGAGEMENT_ACTOR_INPUT")
+ENGAGEMENT_ACTOR_MAX_ITEMS = optional("ENGAGEMENT_ACTOR_MAX_ITEMS")
 
 # Telegram notifications. Empty means "not configured": the notifier then
 # refuses with a clear message instead of failing at the network level.

@@ -3,9 +3,12 @@
 The fetcher is injected, so these tests prove the translation without an actor:
 platform from the address, rows in, items stamped with the candidate's read time.
 """
+
 from datetime import datetime, timedelta
 
-from workflows.engagement_step import creator_sampler
+import pytest
+
+from workflows.engagement_step import apify_fetcher, creator_sampler
 from workflows.record_flow import BUYER, CREATOR
 from workflows.record_loop import Candidate
 
@@ -60,3 +63,74 @@ def test_the_platform_comes_from_the_address():
     creator_sampler(fetch)(candidate(url="https://t.me/creator"))
 
     assert seen == ["Telegram"]
+
+
+# --- the Apify fetcher -------------------------------------------------------
+
+
+def test_the_actor_receives_the_platform_and_the_url():
+    calls = []
+
+    def run(actor_id, payload, *, max_items):
+        calls.append((actor_id, payload, max_items))
+        return [{"url": "https://vk.com/video-1", "views": 10}]
+
+    fetch = apify_fetcher(
+        "apify/vk-scraper",
+        {
+            "profile": "{url}",
+            "platform": "{platform}",
+            "nested": ["{url}"],
+            "limit": 3,
+        },
+        max_items=50,
+        run=run,
+    )
+
+    rows = fetch("VK Video", "https://vk.com/creator")
+
+    assert list(rows) == [{"url": "https://vk.com/video-1", "views": 10}]
+    assert calls == [
+        (
+            "apify/vk-scraper",
+            {
+                "profile": "https://vk.com/creator",
+                "platform": "VK Video",
+                "nested": ["https://vk.com/creator"],
+                "limit": 3,
+            },
+            50,
+        )
+    ]
+
+
+def test_the_input_can_be_read_from_json_text():
+    seen = []
+
+    def run(actor_id, payload, *, max_items):
+        seen.append(payload)
+        return []
+
+    fetch = apify_fetcher("apify/actor", '{"profile": "{url}"}', run=run)
+    fetch("Telegram", "https://t.me/creator")
+
+    assert seen == [{"profile": "https://t.me/creator"}]
+
+
+def test_without_an_actor_no_sample_is_collected():
+    def run(actor_id, payload, *, max_items):
+        raise AssertionError("the actor must not run")
+
+    fetch = apify_fetcher(None, run=run)
+
+    assert fetch("Telegram", "https://t.me/creator") == ()
+
+
+def test_an_input_that_is_not_json_is_refused():
+    with pytest.raises(ValueError, match="not valid JSON"):
+        apify_fetcher("apify/actor", "{broken")
+
+
+def test_an_input_that_is_not_an_object_is_refused():
+    with pytest.raises(ValueError, match="JSON object"):
+        apify_fetcher("apify/actor", "[1, 2]")

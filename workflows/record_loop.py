@@ -13,6 +13,7 @@ The anchor proves the model was shown a page, not that it read the value. So
 every claim must come with a verbatim excerpt, and the loop checks that the
 excerpt really appears in the page: a claim without one is dropped.
 """
+
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
@@ -278,6 +279,7 @@ def score_candidate(
         record_id=record_id,
         account_id=account_id,
         measure=measure,
+        source_url=candidate.source_url,
     )
 
 

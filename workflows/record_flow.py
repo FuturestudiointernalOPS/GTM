@@ -8,6 +8,7 @@ the rows the database expects. No business rule lives here; every rule is in
 Writing the rows is ``integrations/postgres.py``. The order matters: the measure
 is written first, its id is handed to the score, then the score is written.
 """
+
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
@@ -35,6 +36,7 @@ class RecordScore:
     measure: EngagementMeasure | None = None
     record_id: str | None = None
     account_id: str | None = None
+    source_url: str | None = None  # run handle, used to join a verification
 
     def run_row(self) -> dict | None:
         return self.result.to_score_run()

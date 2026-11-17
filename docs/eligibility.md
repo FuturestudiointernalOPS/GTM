@@ -313,3 +313,49 @@ qu'il s'agit d'une dérogation, par qui, jusqu'à quand.
    règle « domaine absent ou source périmée → revue » (V-11, §3.4) n'est pas
    encore appliquée : elle demande une date de dernière vérification par
    registre.
+
+## 11. Branchement au run
+
+`workflows/eligibility_step.py` relie les contrôles au run hebdomadaire. Il ne
+produit aucun contrôle : il lit un fichier JSON fourni par l'opérateur, applique
+la table de décision du filon et rend la décision à l'écrivain.
+
+```json
+{
+  "https://vk.com/creator": {
+    "kind": "CREATOR",
+    "platform_covered": true,
+    "followers": 25000,
+    "foreign_agent_label": false,
+    "rkn_status": "VERIFIED",
+    "sanction_status": "NOT_FOUND"
+  },
+  "https://marque.example": {
+    "kind": "BUYER",
+    "betting_brand": true,
+    "license_status": "VERIFIED",
+    "license_active": true,
+    "license_activity_allowed": true,
+    "country_mapped": true,
+    "sanction_status": "NOT_FOUND"
+  }
+}
+```
+
+- la clé est l'adresse de page utilisée comme repère de run ; l'identifiant de
+  fiche est accepté en second recours ;
+- chaque entrée peut nommer son `kind` ; il doit correspondre au filon de la
+  fiche, sinon l'entrée est refusée ;
+- un champ inconnu ou manquant est refusé : le fichier ne devine rien ;
+- une fiche sans entrée n'obtient **aucun verdict**, et le run la liste comme
+  éligibilité non traitée.
+
+Commande :
+
+```bash
+python -m main --week 45 --verification verifications.json
+```
+
+Le verdict est écrit après le score, dans sa propre transaction. Une erreur sur
+une fiche est listée sans arrêter le run, et une écriture de score qui n'a rien
+produit (fiche rejetée) ne reçoit aucun verdict d'éligibilité.

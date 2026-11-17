@@ -20,6 +20,7 @@ Transaction boundaries, and why they are here:
 
 The caller keeps the connection (and closes it); this module never connects.
 """
+
 from integrations import postgres
 from integrations.record_store import PostgresRecordStore
 from workflows.record_flow import RecordScore
@@ -70,17 +71,54 @@ def record_sinks(connection, *, computed_by: str = "weekly-run"):
     return store, save_measure, write
 
 
+def eligibility_sink(connection, *, computed_by: str = "weekly-run"):
+    """Build the callable ``run_and_score`` uses to store an eligibility verdict.
+
+    The verdict gets its own transaction: the score is already committed, and a
+    failed check must roll back the verdict alone. The commit before writing
+    closes whatever the verification callable may have opened (it is allowed to
+    read the database), so the eligibility write starts from a clean state.
+    """
+
+    def write(record: RecordScore, decision):
+        connection.commit()
+        try:
+            event_id = postgres.write_eligibility(
+                connection,
+                record_id=record.record_id,
+                decision=decision,
+                actor=computed_by,
+            )
+        except Exception:
+            connection.rollback()
+            raise
+
+        connection.commit()
+        return event_id
+
+    return write
+
+
 def postgres_run(
     *,
     connection,
     provider,
     fetch,
     computed_by: str = "weekly-run",
+    verify=None,
     **collection,
 ) -> WeeklyRun:
-    """Run one week and persist it. ``collection`` goes to ``run_and_score``."""
-    records, save_measure, write = record_sinks(
-        connection, computed_by=computed_by
+    """Run one week and persist it. ``collection`` goes to ``run_and_score``.
+
+    ``verify`` is optional: without it the run stops after the score, because
+    the regulatory checks are a separate procedure and no verdict is invented.
+    With it, each written score is followed by its eligibility decision.
+    """
+    records, save_measure, write = record_sinks(connection, computed_by=computed_by)
+    write_eligibility = (
+        eligibility_sink(connection, computed_by=computed_by)
+        if verify is not None
+        else None
     )
     return run_and_score(
         provider=provider,
@@ -88,5 +126,7 @@ def postgres_run(
         records=records,
         save_measure=save_measure,
         write=write,
+        verify=verify,
+        write_eligibility=write_eligibility,
         **collection,
     )
