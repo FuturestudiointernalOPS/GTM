@@ -2,10 +2,11 @@
 
 Scope §5.1-5.2: content and audience in Russian, gaming or esport, 5,000 to
 300,000 followers. This module only collects. Followers, activity and the RKN
-link are facts that processing/ and compliance/ must verify; no score is
+link are facts that processing/ must verify; no score is
 computed here, because a search result is not a proof and a score must never
 absorb eligibility (H-04).
 """
+
 import logging
 from collections.abc import Sequence
 from urllib.parse import urlsplit

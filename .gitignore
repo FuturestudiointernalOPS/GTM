@@ -1,5 +1,4 @@
-cat > .gitignore << 'EOF'
-# Secrets - never commit
+# Secrets — never commit
 .env
 *.key
 *.pem
@@ -9,13 +8,20 @@ cat > .gitignore << 'EOF'
 __pycache__/
 *.pyc
 
-# Logs and local data
+# Test, lint and coverage artefacts
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Logs, local data and backups
 *.log
 logs/
 backups/
+data/
 
 # Editors and systems
 .vscode/
 .idea/
 .DS_Store
-EOF
