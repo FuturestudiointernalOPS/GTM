@@ -8,6 +8,7 @@ Why one run per call: an Actor run costs money and can take minutes. The client
 already retries the API calls by itself, so this module never starts a second
 run on its own; a failure is reported for the workflow to decide.
 """
+
 import logging
 from dataclasses import dataclass
 from datetime import timedelta
@@ -121,9 +122,7 @@ def run_actor_result(
         raise ApifyError(f"Apify refused the request: {_short(error)}") from error
     except Exception as error:
         # Transport errors can quote the request URL, so only the type is kept.
-        raise ApifyError(
-            f"Apify request failed ({type(error).__name__})"
-        ) from error
+        raise ApifyError(f"Apify request failed ({type(error).__name__})") from error
 
     if run is None:
         raise ApifyError(f"Apify did not return a run for {actor_id}")
@@ -158,9 +157,7 @@ def run_actor_result(
     )
 
 
-def _read_output(
-    client: ApifyClient, key_value_store_id: str | None
-) -> object | None:
+def _read_output(client: ApifyClient, key_value_store_id: str | None) -> object | None:
     """Read the run's OUTPUT record, or return None without losing the rows."""
     if not key_value_store_id:
         return None

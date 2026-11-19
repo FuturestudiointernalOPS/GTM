@@ -9,6 +9,7 @@ Security: the API key travels as a query parameter. It is never logged and
 never copied into an error message; transport errors keep only their type, and
 any echoed key is masked.
 """
+
 import logging
 
 import httpx
@@ -131,8 +132,7 @@ def _search_with_retry(query: str, params: dict) -> list[dict]:
 
     if response.status_code >= 400:
         raise SerpApiError(
-            f"SerpApi refused the search ({response.status_code}): "
-            f"{_error(response)}"
+            f"SerpApi refused the search ({response.status_code}): {_error(response)}"
         )
 
     body = _body(response)

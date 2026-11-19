@@ -9,6 +9,7 @@ refused, because the scope insists on them:
 * a licence **document** is not a licence — nothing here reads a PDF sent by the
   company (V-18).
 """
+
 from dataclasses import dataclass
 
 from processing.deduplication import normalize_legal_name
@@ -83,9 +84,7 @@ def check(
 
     record = _find(registry.records, number=number, holder=holder)
     if record is None:
-        return LicenceCheck(
-            NOT_FOUND, ("NO_LICENCE",), source_url=registry.source_url
-        )
+        return LicenceCheck(NOT_FOUND, ("NO_LICENCE",), source_url=registry.source_url)
 
     if normalize_legal_name(record.holder) != normalize_legal_name(holder):
         return LicenceCheck(

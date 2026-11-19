@@ -124,11 +124,11 @@ savoir quelles requêtes produisent les cibles qui passent ensuite à 70+.
 from workflows.creator_hunt import hunt_plan
 from workflows.query_pool import buyer_plan, creator_plan, week_plan
 
-plan = creator_plan(week=45)          # 12 requêtes, ou 6 en semaine CEI
-result = hunt_plan(plan)              # Exa : pages avec query_used + plateforme
+plan = creator_plan(week=45)  # 12 requêtes, ou 6 en semaine CEI
+result = hunt_plan(plan)  # Exa : pages avec query_used + plateforme
 
-full_week = week_plan(week=45)        # 25 requêtes, ou 21 en semaine CEI
-buyers = buyer_plan(week=45)          # betting exclu par défaut
+full_week = week_plan(week=45)  # 25 requêtes, ou 21 en semaine CEI
+buyers = buyer_plan(week=45)  # betting exclu par défaut
 ```
 
 Le même plan peut tourner sur un moteur classique :

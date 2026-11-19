@@ -5,6 +5,7 @@ by each query's ``service`` field, and every page or fact is stored with its
 source and date. An optional analysis step reads the ledger later; it never
 feeds raw pages back into this loop.
 """
+
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime

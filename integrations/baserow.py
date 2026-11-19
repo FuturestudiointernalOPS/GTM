@@ -6,6 +6,7 @@ module only handles the schema (tables and fields), never row data.
 
 The token is never logged and never included in an error message.
 """
+
 from __future__ import annotations
 
 import logging
@@ -95,9 +96,7 @@ class BaserowClient:
     def list_tables(self, database_id: int) -> list[dict]:
         """Return every table of a Baserow database."""
         return _as_list(
-            self._request_with_retry(
-                "GET", f"/database/tables/database/{database_id}/"
-            )
+            self._request_with_retry("GET", f"/database/tables/database/{database_id}/")
         )
 
     def create_table(self, database_id: int, name: str) -> dict:
@@ -117,9 +116,7 @@ class BaserowClient:
     def list_fields(self, table_id: int) -> list[dict]:
         """Return every field of a table, in Baserow order."""
         return _as_list(
-            self._request_with_retry(
-                "GET", f"/database/fields/table/{table_id}/"
-            )
+            self._request_with_retry("GET", f"/database/fields/table/{table_id}/")
         )
 
     def create_field(self, table_id: int, payload: dict) -> dict:

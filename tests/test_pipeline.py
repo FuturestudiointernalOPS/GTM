@@ -1,4 +1,5 @@
 """Tests for the deterministic pipeline. Discovery and reading are replaced."""
+
 from types import SimpleNamespace
 
 import pytest
@@ -64,8 +65,7 @@ def test_pipeline_skips_known_urls_and_reads_only_fresh(monkeypatch, tmp_path):
 
 def test_read_top_caps_pages_per_query(monkeypatch):
     pages = [
-        _page(f"https://vk.com/{index}", "creator.vk_live.cs2")
-        for index in range(5)
+        _page(f"https://vk.com/{index}", "creator.vk_live.cs2") for index in range(5)
     ]
     monkeypatch.setattr(
         pipeline.creator_hunt,

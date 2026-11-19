@@ -1,4 +1,5 @@
 """Tests for the Apify Actor wrapper. No network, no real API token."""
+
 from datetime import timedelta
 from types import SimpleNamespace
 from typing import ClassVar

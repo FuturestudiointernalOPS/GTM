@@ -1,4 +1,5 @@
 """Tests for the minimal Telegram notifier. No network, no real bot."""
+
 import json
 
 import httpx
@@ -47,7 +48,9 @@ def test_sends_plain_text_to_the_configured_chat():
 @respx.mock
 def test_a_refusal_is_not_retried():
     route = respx.post(URL).mock(
-        return_value=httpx.Response(400, json={"ok": False, "description": "chat not found"})
+        return_value=httpx.Response(
+            400, json={"ok": False, "description": "chat not found"}
+        )
     )
 
     with pytest.raises(telegram.TelegramError, match="chat not found"):

@@ -9,6 +9,7 @@ Cost: the Actor is paid per event at $1.60 per 1,000 records. ``max_items`` is
 therefore always sent with every run and the estimated ceiling is reported with
 the result. A run with ``max_items=100`` costs at most about $0.16.
 """
+
 import json
 import logging
 from collections.abc import Sequence

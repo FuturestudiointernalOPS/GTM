@@ -13,6 +13,7 @@ extracts facts, each tied to a source; here they become the typed measures of
 The engagement median does not come from here: it is produced by the measure
 step and attached later with ``apply_engagement_measure``.
 """
+
 from dataclasses import dataclass
 from fractions import Fraction
 

@@ -7,6 +7,7 @@ inference (Q-04). Anything else is rejected with a reason and never scored.
 
 The ledger stays the only source of provenance: this module never invents a URL.
 """
+
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
@@ -52,9 +53,7 @@ def extract(
             rejected.append(f"{key}: {REJECTED_INFERRED}")
             continue
 
-        facts.append(
-            Fact(key=key, value=value, source_url=evidence.source.url)
-        )
+        facts.append(Fact(key=key, value=value, source_url=evidence.source.url))
 
     return Extraction(facts=tuple(facts), rejected=tuple(rejected))
 

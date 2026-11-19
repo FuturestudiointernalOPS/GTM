@@ -191,6 +191,25 @@ pytest tests/test_baserow_schema.py tests/test_baserow_apply.py
 - `test_baserow_apply.py` simule l'API Baserow avec `respx` : dry-run, création,
   idempotence, ajout d'options, conflit de type et protection du jeton.
 
+## Vérification contre un serveur réel
+
+Une fois `001_schema.sql` et `002_seed_reference.sql` appliqués, les tests
+d'intégration rejouent le smoke test et contrôlent la version de critères :
+
+```bash
+GTM_TEST_DATABASE_URL=postgresql://user:pass@host/gtm pytest tests/test_postgres_live.py
+```
+
+Sans cette variable, ces tests sont ignorés : la suite ordinaire reste hors
+réseau. Le script `smoke_test.sql` se termine par `ROLLBACK`, il ne laisse rien
+en base.
+
+## Brancher la synchronisation
+
+Les tables `sync_outbox` et `baserow_event` existent, mais aucune écriture ne les
+alimente encore : le service de synchronisation reste à écrire. Ne pas créer de
+vues Baserow qui supposeraient des champs non synchronisés sans le signaler.
+
 ## Erreurs fréquentes
 
 | Symptôme | Cause probable | Solution |

@@ -7,6 +7,7 @@ extracts structured rows from the pages that matter.
 A row returned here is a lead, not a proof. The workflow still has to attach
 the source and check the page before the fact enters a record (scope §3.1).
 """
+
 import logging
 import re
 from collections.abc import Sequence

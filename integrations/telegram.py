@@ -8,6 +8,7 @@ Why the "safely" variant: a notification that fails must never lose a run or a
 record. Pipelines call send_message_safely() and carry on; the text is still
 written to the log so nothing disappears silently.
 """
+
 import logging
 
 import httpx

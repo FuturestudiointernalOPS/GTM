@@ -27,9 +27,9 @@ One server (`vmi3726974`), one shared Linux account (`hunter`). Every team membe
 ```
 /home/hunter/
 ├── .ssh/authorized_keys     SSH public keys allowed to log in
-├── GTMTool/                 Python project (to be replaced by a clone of the GTM repo)
+├── GTMTool/                 clone of the GTM repo (github.com:FuturestudiointernalOPS/GTM)
 │   ├── .venv/               project virtual environment (Python 3.12.3)
-│   └── .env                 DEEPSEEK_API_KEY (chmod 600) - never in Git
+│   └── .env                 secrets: model, search, database (chmod 600) - never in Git
 ├── backups/                 encrypted backups (*.tar.gz.age)
 ├── .hermes/                 Hermes Agent
 │   ├── config.yaml          settings (model, Docker sandbox, checkpoints)
@@ -374,23 +374,26 @@ Notes:
 ## 4b. Code workflow (GitHub)
 
 - Repository: `git@github.com:FuturestudiointernalOPS/GTM.git` (remote switched from HTTPS to SSH).
-- `main` holds `.gitignore` and the project skeleton from Henry's plan (empty folders kept with `.gitkeep`). The skeleton was first created on the server, then copied to the repo with `rsync` (excluding `.venv`, `.env`, `__pycache__`).
+- `main` holds the working code and the documentation. The empty skeleton folders from Henry's plan were removed on 2026-11-17: an empty module that is wired to nothing is worse than an absent one. Git history keeps them.
+- `dev` is merged into `main`; all `intern1/*` branches are merged too, except one obsolete `requirements.txt` commit.
+- A GitHub Action (`.github/workflows/ci.yml`) runs `ruff check`, `ruff format --check` and `pytest` on every push to `main`/`dev` and on every pull request.
 - **Code is written on laptops, never on the server.** Each person works on a branch and opens a pull request; another intern reviews before merging into `main`.
 - The server only pulls validated code (`git pull`), through a read-only deploy key (to be added by a repo admin in Settings, Deploy keys).
 - Branch names: `intern1/<task>` (for example `intern1/ai-layer`, `intern1/config`, `intern1/docs-infra`). One task per branch, created from an up-to-date `main` (`git checkout main && git pull`). A branch that depends on another unmerged branch is created from it, and its pull request uses that branch as base.
 
 ## 4c. AI layer (code, on laptops)
 
-Open pull requests: `intern1/ai-layer`, then `intern1/config` (based on `intern1/ai-layer`).
+All `intern1/*` branches are merged; `main` is the reference. The weekly run is
+started with `python -m main` (see the repository `README.md`).
 
 | File | Role |
 |---|---|
 | `ai/provider.py` | `AIProvider` contract: each provider only implements `chat(system, user)`; `analyze_creator`, `analyze_buyer` and `generate_outreach` are shared, load their prompt from `ai/prompts/<name>.md` and parse a JSON answer |
-| `ai/deepseek.py` | `DeepSeekProvider`: OpenAI-compatible client, model from `.env` (default `deepseek-v4-flash`), keeps `last_usage` (tokens) for cost tracking |
+| `ai/deepseek.py` | `DeepSeekProvider`: OpenAI-compatible client, model from `AI_MODEL` or `DEEPSEEK_MODEL` (default `deepseek-v4-flash`), key from `DEEPSEEK_API_KEY`; keeps `last_usage` (tokens) for cost tracking |
 | `ai/prompts/analyze_creator.md` | Provisional prompt for technical tests; the real criteria come from Intern 2 |
 | `ai/__init__.py` | `get_ai_provider()` returns the provider named in `AI_PROVIDER`; unknown names stop with a clear error |
 | `config/environment.py` | Loads `.env` once; `require()` stops with "Missing setting: NAME", `optional()` returns a default |
-| `config/settings.py` | `AI_PROVIDER` (default `deepseek`) and `AI_MODEL` (empty = provider default) |
+| `config/settings.py` | `AI_PROVIDER` (default `deepseek`), `AI_MODEL` (empty = provider default), DeepSeek key/model, Apify engagement actor, database and search keys |
 | `.env.example` | List of settings without values (copy to `.env`) |
 | `tests/manual_check_ai.py` | Sends a fake Russian gaming creator through `get_ai_provider()` |
 
@@ -549,9 +552,9 @@ Dedicated wrapper around the paid directory Actor
 from workflows.creator_hunt import hunt_telegram
 
 result = hunt_telegram(max_items=100)  # about $0.16 at most
-result["candidates"]    # creator fields + directory_facts (growth, reach, rating)
-result["profiles"]      # raw Actor rows, unchanged
-result["resume_cursor"] # pass back to continue without paying twice
+result["candidates"]  # creator fields + directory_facts (growth, reach, rating)
+result["profiles"]  # raw Actor rows, unchanged
+result["resume_cursor"]  # pass back to continue without paying twice
 ```
 
 Rules the wrapper enforces:

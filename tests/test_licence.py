@@ -3,6 +3,7 @@
 Two distinctions carry the module: a verified fact can be unfavourable, and a
 country nobody mapped suspends instead of rejecting.
 """
+
 import json
 
 import pytest
@@ -113,9 +114,7 @@ def test_the_activity_question_is_not_asked_when_no_list_is_given():
 
 
 def test_an_unmapped_country_suspends():
-    result = check(
-        registry(mapped=False, country="KZ"), number="1", holder=HOLDER
-    )
+    result = check(registry(mapped=False, country="KZ"), number="1", holder=HOLDER)
 
     assert result.status == PENDING
     assert result.country_mapped is False
@@ -123,9 +122,7 @@ def test_an_unmapped_country_suspends():
 
 
 def test_an_unreadable_registry_suspends():
-    result = check(
-        registry(unavailable=True), number="26-01-000123", holder=HOLDER
-    )
+    result = check(registry(unavailable=True), number="26-01-000123", holder=HOLDER)
 
     assert result.status == PENDING
     assert result.reasons == ("REGISTRY_UNAVAILABLE",)

@@ -12,6 +12,7 @@ discarded, which is what separates an extraction from an invention.
 The field lists must match ``processing/enrichment.py``: the fact keys are the
 contract, and a test asserts the two lists are equal.
 """
+
 from pydantic import BaseModel, ConfigDict, Field
 
 

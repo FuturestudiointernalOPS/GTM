@@ -1,4 +1,5 @@
 """Tests for the stored-sample replay and the review vocabulary (E5)."""
+
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from fractions import Fraction
@@ -140,9 +141,7 @@ def test_a_four_item_sample_replays_as_unknown():
 
 def test_a_pinned_unreadable_row_is_ignored_by_the_replay():
     rows = [sample_row(index) for index in range(1, 6)]
-    rows.append(
-        sample_row(6, value=None, readable=False, reason="PINNED")
-    )
+    rows.append(sample_row(6, value=None, readable=False, reason="PINNED"))
 
     result = recompute_measure(
         rows, platform="Telegram", followers=100_000, read_at=READ
@@ -155,7 +154,9 @@ def test_a_pinned_unreadable_row_is_ignored_by_the_replay():
 
 
 def test_a_snapshot_mismatch_is_not_a_median():
-    rows = [sample_row(index, read_at="2026-11-09T12:00:00+00:00") for index in range(1, 6)]
+    rows = [
+        sample_row(index, read_at="2026-11-09T12:00:00+00:00") for index in range(1, 6)
+    ]
 
     result = recompute_measure(
         rows, platform="Telegram", followers=100_000, read_at=READ

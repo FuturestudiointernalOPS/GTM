@@ -13,6 +13,7 @@ Two failures are distinguished, and they do not lead to the same place:
 
 Nothing here fetches: the lists arrive as data, with their source and version.
 """
+
 from dataclasses import dataclass
 
 from processing.deduplication import normalize_legal_name
@@ -45,9 +46,7 @@ class SanctionsScreening:
     unavailable: tuple[str, ...] = ()
 
 
-def screen(
-    subject: str, screening: SanctionsScreening, *, aliases=()
-) -> Check:
+def screen(subject: str, screening: SanctionsScreening, *, aliases=()) -> Check:
     """Screen one name, and its aliases, against every list."""
     if screening.unavailable:
         return Check(
@@ -78,7 +77,9 @@ def screen(
         SANCTIONS,
         NOT_FOUND,
         ("NO_MATCH",)
-        + tuple(f"SCREENED:{sanctions_list.source}" for sanctions_list in screening.lists),
+        + tuple(
+            f"SCREENED:{sanctions_list.source}" for sanctions_list in screening.lists
+        ),
     )
 
 

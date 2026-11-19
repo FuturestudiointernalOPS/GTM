@@ -1,4 +1,5 @@
 """Read settings from the .env file, safely."""
+
 import os
 
 from dotenv import load_dotenv

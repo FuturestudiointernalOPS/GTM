@@ -3,6 +3,7 @@
 The client is allowed to be unreadable, but it is not allowed to mistake an
 unreadable answer for an absence — that difference is what the tests protect.
 """
+
 import httpx
 import pytest
 import respx

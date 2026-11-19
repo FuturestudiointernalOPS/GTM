@@ -3,6 +3,7 @@
 These are the only tests that exercise the whole chain the pipeline will call:
 extraction, enrichment, engagement measure, scoring and the rows for the base.
 """
+
 from datetime import datetime, timedelta
 
 from processing.engagement import EngagementItem

@@ -4,13 +4,15 @@ The connection is fake: the test checks which statements run, and where the
 transaction boundaries fall. A commit placed in the wrong spot either loses a
 fiche or keeps a score that should not exist, so the boundaries are the subject.
 """
+
 from fractions import Fraction
 
 import pytest
 
 from processing.engagement import EngagementMeasure
+from processing.eligibility import CreatorVerification, decide_creator
 from processing.scoring import CreatorMeasures, score_creator
-from workflows.postgres_run import record_sinks
+from workflows.postgres_run import eligibility_sink, record_sinks
 from workflows.record_flow import CREATOR, RecordScore
 from workflows.records import CreatorIdentity
 
@@ -56,6 +58,8 @@ class FakeConnection:
             return ("rec-1", "acc-1")
         if "SELECT workflow_status, score_proposal FROM record" in sql:
             return (self.status, self.proposal)
+        if "SELECT workflow_status, score FROM record" in sql:
+            return ("SCORED", 79)
         if "SELECT transition_record" in sql:
             return ("event-1",)
         if "RETURNING id" in sql:
@@ -216,3 +220,43 @@ def test_a_score_without_fiche_rolls_back_and_says_so():
 
     assert connection.rollbacks == 1
     assert connection.commits == 1
+
+
+# --- eligibility -------------------------------------------------------------
+
+
+def creator_verification():
+    return CreatorVerification(
+        platform_covered=True,
+        followers=25_000,
+        foreign_agent_label=False,
+        sanction_status="NOT_FOUND",
+        rkn_status="VERIFIED",
+    )
+
+
+def test_an_eligibility_verdict_commits_on_its_own():
+    connection = FakeConnection()
+    write = eligibility_sink(connection)
+
+    event_id = write(record(), decide_creator(creator_verification()))
+
+    assert event_id == "event-1"
+    assert connection.commits == 2
+    assert connection.rollbacks == 0
+
+    statements = [sql for sql, _ in connection.log]
+    assert any("INSERT INTO eligibility_check" in sql for sql in statements)
+    assert any("INSERT INTO eligibility_decision" in sql for sql in statements)
+    assert any("SELECT transition_record" in sql for sql in statements)
+
+
+def test_a_failed_verdict_rolls_back_alone():
+    connection = FakeConnection()
+    write = eligibility_sink(connection)
+
+    with pytest.raises(ValueError, match="record id"):
+        write(record(record_id=None), decide_creator(creator_verification()))
+
+    assert connection.commits == 1
+    assert connection.rollbacks == 1

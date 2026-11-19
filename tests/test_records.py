@@ -3,6 +3,7 @@
 The store is in memory, which is the point: the identity rules are decided here,
 not by a database.
 """
+
 from workflows.record_flow import BUYER, CREATOR
 from workflows.record_loop import Candidate
 from workflows.records import (
@@ -124,9 +125,10 @@ def test_a_buyer_without_a_legal_name_creates_nothing():
     store = MemoryRecordStore()
 
     assert ensure_buyer(store, candidate("https://brand.ru", BUYER)) is None
-    assert ensure_buyer(
-        store, candidate("https://brand.ru", BUYER), tax_id="7700000000"
-    ) is None
+    assert (
+        ensure_buyer(store, candidate("https://brand.ru", BUYER), tax_id="7700000000")
+        is None
+    )
 
     # Nothing was written: a later labelled advertisement can still create it.
     created = ensure_buyer(

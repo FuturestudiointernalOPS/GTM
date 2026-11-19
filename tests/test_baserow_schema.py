@@ -4,6 +4,7 @@ The JSON is the source used to create the operational tables. These tests keep
 the file honest without needing a Baserow instance: they check the structure,
 the link targets, and the mandatory fields from docs/scope.md.
 """
+
 import json
 from pathlib import Path
 
@@ -172,9 +173,7 @@ def test_every_table_has_a_valid_shape(schema: dict) -> None:
 
             if field["type"] in {"single_select", "multiple_select"}:
                 options = field.get("options")
-                assert options, (
-                    f"{table['name']}.{field['name']} must declare options"
-                )
+                assert options, f"{table['name']}.{field['name']} must declare options"
                 assert len(options) == len(set(options)), (
                     f"{table['name']}.{field['name']} has duplicate options"
                 )
@@ -264,9 +263,7 @@ def test_engagement_fields_follow_the_measure_contract(schema: dict) -> None:
             "UNREADABLE",
         ]
 
-    creator_fields = {
-        field["name"]: field for field in tables["Createurs"]["fields"]
-    }
+    creator_fields = {field["name"]: field for field in tables["Createurs"]["fields"]}
     assert creator_fields["engagement_status"]["required"] is True
     assert creator_fields["average_views"]["required"] is False
     assert creator_fields["average_concurrent_viewers"]["required"] is False

@@ -1,4 +1,5 @@
 """Tests for per-query search options and query_used attribution."""
+
 import pytest
 
 from workflows import search

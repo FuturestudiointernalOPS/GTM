@@ -6,6 +6,7 @@ a qualified buyer. Betting brands are not in the default queries on purpose:
 they need a licence check before a record is created (§6.4, E-B-04), so a human
 adds that query explicitly once the check exists.
 """
+
 import logging
 from collections.abc import Sequence
 

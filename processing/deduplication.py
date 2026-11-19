@@ -9,6 +9,7 @@ The store is a plain JSON file today (no network, easy to test). Baserow will
 replace it later; the contract is a set of known URLs and handles plus an
 ``add`` call.
 """
+
 import json
 from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit, urlunsplit

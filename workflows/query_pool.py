@@ -17,6 +17,7 @@ queries are off by default: they may only run for licensed operators.
 Tracking: every query has a stable ``id``. Workflows copy it to ``query_used``
 so the tracker can tell which query produced a lead that later scores 70+.
 """
+
 import hashlib
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
@@ -325,9 +326,7 @@ BUYER_SPONSORS = (
         "Communiqué de partenariat esport",
     ),
 )
-BUYER_SPONSORS = tuple(
-    replace(query, service="serpapi") for query in BUYER_SPONSORS
-)
+BUYER_SPONSORS = tuple(replace(query, service="serpapi") for query in BUYER_SPONSORS)
 
 BUYER_CATEGORIES = (
     Query(
@@ -599,9 +598,9 @@ def company_queries(company: str) -> tuple[Query, ...]:
     company = company.strip()
     if not company:
         raise ValueError("company must not be empty")
-    digest = hashlib.sha1(
-        company.encode("utf-8"), usedforsecurity=False
-    ).hexdigest()[:8]
+    digest = hashlib.sha1(company.encode("utf-8"), usedforsecurity=False).hexdigest()[
+        :8
+    ]
     return tuple(
         Query(
             id=f"buyer.contacts.{template.key}.{digest}",

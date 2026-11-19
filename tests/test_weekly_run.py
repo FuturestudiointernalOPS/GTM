@@ -3,11 +3,13 @@
 The collector, the model, the actor fetcher and the writer are all injected, so
 the whole run is exercised offline.
 """
+
 import json
 from datetime import datetime, timedelta
 
 from ai.provider import AIProvider
 from integrations.webreader import PageRead
+from processing import eligibility
 from processing.evidence import EvidenceLedger
 from workflows.pipeline import PipelineResult
 from workflows.record_flow import RecordScore
@@ -15,6 +17,14 @@ from workflows.records import MemoryRecordStore
 from workflows.weekly_run import run_and_score
 
 READ = "2026-11-10T12:00:00+00:00"
+
+CREATOR_VERIFICATION = eligibility.CreatorVerification(
+    platform_covered=True,
+    followers=25_000,
+    foreign_agent_label=False,
+    sanction_status=eligibility.NOT_FOUND,
+    rkn_status=eligibility.VERIFIED,
+)
 
 QUOTES = {
     "gaming_share": "60 % гейминг",
@@ -166,6 +176,93 @@ def test_two_runs_on_the_same_page_reuse_the_record():
         records=store,
     )
 
-    assert (
-        first.scores.scored[0].record_id == second.scores.scored[0].record_id
+    assert first.scores.scored[0].record_id == second.scores.scored[0].record_id
+
+
+# --- eligibility -------------------------------------------------------------
+
+
+def test_a_written_score_is_followed_by_its_eligibility_decision():
+    seen = []
+
+    run = run_and_score(
+        provider=FakeProvider(),
+        fetch=lambda platform, url: vk_rows(),
+        collect=collected,
+        write=lambda record: "run-1",
+        verify=lambda record: CREATOR_VERIFICATION,
+        write_eligibility=lambda record, decision: seen.append(decision),
     )
+
+    assert run.eligible == (("vk.com/creator", "ELIGIBLE"),)
+    assert [decision.workflow_status for decision in seen] == ["PRESELECTED"]
+    assert run.eligibility_skipped == ()
+
+
+def test_the_record_carries_its_page_address():
+    run = run_and_score(
+        provider=FakeProvider(),
+        fetch=lambda platform, url: vk_rows(),
+        collect=collected,
+    )
+
+    assert run.scores.scored[0].source_url == "https://vk.com/creator"
+
+
+def test_without_a_verification_no_verdict_is_taken():
+    run = run_and_score(
+        provider=FakeProvider(),
+        fetch=lambda platform, url: vk_rows(),
+        collect=collected,
+        write=lambda record: "run-1",
+        verify=lambda record: None,
+        write_eligibility=lambda record, decision: "event-1",
+    )
+
+    assert run.eligible == ()
+    assert run.eligibility_skipped == ("vk.com/creator",)
+
+
+def test_a_rejected_record_gets_no_eligibility_verdict():
+    run = run_and_score(
+        provider=FakeProvider(),
+        fetch=lambda platform, url: vk_rows(),
+        collect=collected,
+        write=lambda record: None,
+        verify=lambda record: CREATOR_VERIFICATION,
+        write_eligibility=lambda record, decision: "event-1",
+    )
+
+    assert run.eligible == ()
+    assert run.eligibility_skipped == ()
+
+
+def test_a_failed_verdict_is_listed_and_stops_nothing():
+    def write_eligibility(record, decision):
+        raise RuntimeError("registre indisponible")
+
+    run = run_and_score(
+        provider=FakeProvider(),
+        fetch=lambda platform, url: vk_rows(),
+        collect=collected,
+        write=lambda record: "run-1",
+        verify=lambda record: CREATOR_VERIFICATION,
+        write_eligibility=write_eligibility,
+    )
+
+    assert run.written == ("run-1",)
+    assert run.eligibility_failed == (("vk.com/creator", "registre indisponible"),)
+
+
+def test_a_verification_for_the_wrong_filon_is_a_failure():
+    run = run_and_score(
+        provider=FakeProvider(),
+        fetch=lambda platform, url: vk_rows(),
+        collect=collected,
+        write=lambda record: "run-1",
+        verify=lambda record: eligibility.BuyerVerification(betting_brand=True),
+        write_eligibility=lambda record, decision: "event-1",
+    )
+
+    assert run.eligible == ()
+    assert run.eligibility_failed[0][0] == "vk.com/creator"

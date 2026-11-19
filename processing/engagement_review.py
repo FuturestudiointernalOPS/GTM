@@ -6,6 +6,7 @@ by the SQL views, so the workflow and the database agree on what needs a human.
 
 Nothing here reads a page or a clock: rows in, measure out.
 """
+
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -84,9 +85,7 @@ def needs_audit(measure: EngagementMeasure) -> bool:
     return AUDIT_DISPERSION in measure.flags
 
 
-def matches_stored(
-    measure: EngagementMeasure, *, status: str, value: object
-) -> bool:
+def matches_stored(measure: EngagementMeasure, *, status: str, value: object) -> bool:
     """True when a replay agrees with the stored status and median."""
     if measure.status != status:
         return False

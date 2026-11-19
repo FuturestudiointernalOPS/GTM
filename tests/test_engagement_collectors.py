@@ -4,6 +4,7 @@ The collector layer is tested without network: raw Actor-like rows in, canonical
 engagement items out. One end-to-end case hands the Telegram sample to the
 measure and then to the score, so the three stages cannot drift apart.
 """
+
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
@@ -22,7 +23,12 @@ def day(days_ago: int) -> str:
 
 def telegram_rows() -> list[dict]:
     return [
-        {"url": "https://t.me/test/1", "published_at": day(1), "views": 12_000, "id": "1"},
+        {
+            "url": "https://t.me/test/1",
+            "published_at": day(1),
+            "views": 12_000,
+            "id": "1",
+        },
         {
             "url": "https://t.me/test/2",
             "published_at": day(2),
@@ -105,7 +111,11 @@ def test_vk_video_separates_long_videos_clips_live_and_posts():
 def test_rutube_classifies_shorts_clips_and_live():
     rows = [
         {"url": "https://rutube.ru/video/abc/", "published_at": day(1), "views": 5_000},
-        {"url": "https://rutube.ru/shorts/def/", "published_at": day(2), "views": 9_000},
+        {
+            "url": "https://rutube.ru/shorts/def/",
+            "published_at": day(2),
+            "views": 9_000,
+        },
         {"url": "https://rutube.ru/clip/ghi/", "published_at": day(3), "views": 8_000},
         {"url": "https://rutube.ru/live/jkl/", "published_at": day(4), "views": 1_000},
     ]
@@ -267,7 +277,11 @@ def test_collect_with_apify_returns_the_run_handles(monkeypatch):
 
 def test_telegram_collection_feeds_the_measure_and_the_score():
     rows = [
-        {"url": f"https://t.me/test/{index}", "published_at": day(index), "views": 12_000}
+        {
+            "url": f"https://t.me/test/{index}",
+            "published_at": day(index),
+            "views": 12_000,
+        }
         for index in range(1, 30)
     ]
     rows.append(
@@ -298,7 +312,9 @@ def test_telegram_collection_feeds_the_measure_and_the_score():
     assert "DISPERSION" in engagement.flags
 
     row = next(
-        line for line in result.to_score_lines() if line["criterion_code"] == "engagement"
+        line
+        for line in result.to_score_lines()
+        if line["criterion_code"] == "engagement"
     )
     assert row["engagement_measure_run_id"] == "run-eng-1"
 

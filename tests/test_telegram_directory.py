@@ -1,4 +1,5 @@
 """Tests for the Telegram directory Actor wrapper. No network, no paid run."""
+
 from decimal import Decimal
 
 import pytest

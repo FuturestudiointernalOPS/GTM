@@ -141,16 +141,29 @@ inconnue et la fiche part en revue — c'est le comportement voulu, pas un défa
 
 ### La commande de run
 
-Un seul appel enchaîne les trois étapes : collecte, notation des pages fraîches
-avec échantillon, écriture si un écrivain est fourni. Tout ce qui sort de la
-machine est injecté — le collecteur, le fournisseur de modèle, le chercheur
-d'acteur et l'écrivain —, ce qui permet de rejouer un run complet hors ligne.
+Une commande enchaîne les étapes : collecte, notation des pages fraîches avec
+échantillon, écriture, puis contrôle d'éligibilité quand les vérifications sont
+fournies.
 
-Sans écrivain, le run rend les scores et **n'écrit rien** : c'est l'état actuel,
-et le résultat le dit au lieu de le laisser croire. Un écrivain qui ne renvoie
-rien compte comme « rien écrit » — une fiche rejetée produit une décision, pas
-une course de score. Un écrivain qui échoue est listé par fiche, sans arrêter le
-run.
+```bash
+python -m main --dry-run --week 45          # ni base, ni écriture
+python -m main --week 45                     # scores et décisions en base
+python -m main --week 45 --verification v.json
+```
+
+Tout ce qui sort de la machine reste injectable — collecteur, fournisseur de
+modèle, chercheur d'acteur, écrivain et vérifications —, ce qui permet de
+rejouer un run complet hors ligne. En `--dry-run`, le run rend les scores et
+**n'écrit rien** : le récapitulatif JSON le dit au lieu de le laisser croire.
+Un écrivain qui ne renvoie rien compte comme « rien écrit » — une fiche rejetée
+produit une décision, pas une course de score. Un écrivain qui échoue est listé
+par fiche, sans arrêter le run.
+
+L'éligibilité est branchée après l'écriture du score, dans sa propre
+transaction : `workflows/eligibility_step.py` applique la table de décision et
+`integrations/postgres.py` écrit le verdict. Les contrôles eux-mêmes ne sont pas
+réalisés par le run ; ils arrivent par le fichier `--verification`, ou restent
+absents et la fiche n'obtient alors aucun verdict.
 
 ## La fiche et son identité
 
@@ -264,7 +277,7 @@ la table de décision de `docs/verification.md`.
 from processing.eligibility import decide_creator, decide_buyer
 from integrations.postgres import write_eligibility
 
-decision = decide_creator(verification)   # ou decide_buyer
+decision = decide_creator(verification)  # ou decide_buyer
 write_eligibility(
     connection, record_id=record.record_id, decision=decision, actor="verification"
 )
@@ -306,10 +319,10 @@ score : une fiche sans score n'est éligible à rien.
    (`workflows/record_flow.py`) et les règles sont fixées (§3.5,
    `docs/scoring.md`). L'écriture des lignes et de la décision est prête
    (`integrations/postgres.py`), les fiches sont créées ou retrouvées
-   (`integrations/record_store.py`), le run complet est branché
-   (`workflows/postgres_run.py`) et la table d'éligibilité est implémentée
-   (`processing/eligibility.py`, `docs/eligibility.md`), avec ses trois clients
-   (registre, sanctions, licences) et les deux issues humaines (revue,
+   (`integrations/record_store.py`), le run complet est branché et exécutable
+   (`python -m main`, `workflows/postgres_run.py`) et l'éligibilité suit le score
+   (`workflows/eligibility_step.py`, `docs/eligibility.md`), avec ses trois
+   clients (registre, sanctions, licences) et les deux issues humaines (revue,
    dérogation). Restent la calibration des seuils Rutube et YouTube, le cas VK
    Video Live seul, l'adaptation des clients aux formats réels, l'exécution réelle
    contre un serveur et l'extraction réelle des faits qui alimente la chaîne.

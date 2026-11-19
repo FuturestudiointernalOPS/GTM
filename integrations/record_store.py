@@ -19,6 +19,7 @@ The caller owns the transaction: three inserts for a creator, two for a buyer.
 Everything is passed to ``cursor.execute`` so the tests can check the shape of
 each statement without a server.
 """
+
 import re
 
 from processing.deduplication import (
@@ -168,9 +169,7 @@ class PostgresRecordStore:
                 )
                 row = cursor.fetchone()
                 if row is not None:
-                    return RecordKeys(
-                        record_id=str(row[0]), provisional=bool(row[1])
-                    )
+                    return RecordKeys(record_id=str(row[0]), provisional=bool(row[1]))
 
             cursor.execute(SELECT_BUYER_BY_DOMAIN, (identity.domain,))
             row = cursor.fetchone()
@@ -238,7 +237,9 @@ class PostgresRecordStore:
         return str(row[0])
 
 
-def _tax_columns(tax_id: str | None) -> tuple[str | None, str | None, str | None, str | None]:
+def _tax_columns(
+    tax_id: str | None,
+) -> tuple[str | None, str | None, str | None, str | None]:
     """Map a tax id onto the column that accepts it, and its declared type."""
     digits = (tax_id or "").strip()
     if not digits:

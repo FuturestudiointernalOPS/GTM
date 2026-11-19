@@ -1,4 +1,5 @@
 """Tests for URL/handle normalization and the database-first store."""
+
 from processing.deduplication import (
     JsonRecordStore,
     normalize_handle,

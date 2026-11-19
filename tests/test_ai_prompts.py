@@ -3,6 +3,7 @@
 The defect these tests guard against is a method that names a prompt file which
 was never written: the failure only appears the first time the method is called.
 """
+
 from ai.provider import PROMPTS_DIR, AIProvider
 
 PROMPTS = (
@@ -25,9 +26,7 @@ class ClaimsAnswer(AIProvider):
 
 
 def test_every_prompt_file_exists_and_is_not_empty():
-    missing = [
-        name for name in PROMPTS if not (PROMPTS_DIR / f"{name}.md").exists()
-    ]
+    missing = [name for name in PROMPTS if not (PROMPTS_DIR / f"{name}.md").exists()]
     empty = [
         name
         for name in PROMPTS

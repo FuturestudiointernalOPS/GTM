@@ -4,6 +4,7 @@ The search is injected; what is tested here is what a returned entry proves.
 The point of the module is that a name is never a key and that a service that
 does not answer is not an absence.
 """
+
 from processing.eligibility import (
     MANUAL_REVIEW,
     MISMATCH,

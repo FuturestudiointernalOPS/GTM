@@ -1,4 +1,5 @@
 """Tests for the Baserow schema seeder. No network, no real Baserow."""
+
 import json
 
 import httpx
@@ -108,9 +109,9 @@ def test_dry_run_reports_without_writing():
     respx.get(f"{BASE}/database/tables/database/{DATABASE_ID}/").mock(
         return_value=httpx.Response(200, json=[])
     )
-    table_post = respx.post(
-        f"{BASE}/database/tables/database/{DATABASE_ID}/"
-    ).mock(return_value=httpx.Response(201, json={"id": 100, "name": "Parents"}))
+    table_post = respx.post(f"{BASE}/database/tables/database/{DATABASE_ID}/").mock(
+        return_value=httpx.Response(201, json={"id": 100, "name": "Parents"})
+    )
 
     result = apply_schema(SCHEMA, DATABASE_ID, client=make_client(), dry_run=True)
 
@@ -191,7 +192,9 @@ def test_creates_tables_and_fields_in_dependency_order():
     assert status_payload["type"] == "single_select"
     assert [item["value"] for item in status_payload["select_options"]] == ["A", "B"]
 
-    payloads = {_json(call.request)["name"]: _json(call.request) for call in child_fields.calls}
+    payloads = {
+        _json(call.request)["name"]: _json(call.request) for call in child_fields.calls
+    }
     assert payloads["parent"]["link_row_table_id"] == 100
     assert payloads["parent"]["has_many_relationships"] is False
     assert payloads["status_lookup"]["through_field_id"] == 4

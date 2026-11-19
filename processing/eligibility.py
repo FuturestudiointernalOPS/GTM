@@ -16,6 +16,7 @@ Two things it never does:
 ``EXCEPTION_APPROVED`` is never returned: it requires a dated, signed human
 decision with an owner, and a function cannot invent one (V-22).
 """
+
 from dataclasses import dataclass
 
 # Eligibility, mirrored from the ``eligibility_status`` enum.
@@ -192,9 +193,7 @@ def decide_creator(verification: CreatorVerification) -> EligibilityDecision:
             checks=tuple(checks),
         )
     if coverage.status == NOT_APPLICABLE:
-        checks.append(
-            Check(RKN_REGISTRY, NOT_APPLICABLE, coverage.reasons)
-        )
+        checks.append(Check(RKN_REGISTRY, NOT_APPLICABLE, coverage.reasons))
         return EligibilityDecision(
             status=ELIGIBLE,
             workflow_status=PRESELECTED,

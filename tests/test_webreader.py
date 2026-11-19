@@ -1,4 +1,5 @@
 """Tests for the batch page reader. No network, HTML is mocked."""
+
 import httpx
 import pytest
 import respx

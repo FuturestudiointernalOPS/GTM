@@ -18,6 +18,7 @@ The search by address alone is one of the two paths allowed by §2.2, and it is
 the one this service can always run: ``platform_url`` is the mandatory key of a
 profile (§2.5).
 """
+
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -89,7 +90,9 @@ def allowed_domains() -> tuple[str, ...]:
     )
 
 
-def search(query: str, *, fetch: Fetcher | None = None, parser: Parser | None = None) -> RegistrySearch:
+def search(
+    query: str, *, fetch: Fetcher | None = None, parser: Parser | None = None
+) -> RegistrySearch:
     """Search the registry by page address, and return the rows it lists.
 
     ``fetch`` and ``parser`` are injectable so a test needs no network; leaving
@@ -123,9 +126,7 @@ def search(query: str, *, fetch: Fetcher | None = None, parser: Parser | None = 
     official = allowed_domains()
     lookalike = bool(official) and _host(page.url) not in official
     log.info("RKN search for %s: %s row(s)", text, len(entries))
-    return RegistrySearch(
-        query=text, entries=entries, lookalike=lookalike
-    )
+    return RegistrySearch(query=text, entries=entries, lookalike=lookalike)
 
 
 def check(
@@ -143,9 +144,7 @@ def check(
     `CreatorVerification.rkn_status` and its reasons.
     """
     found = search(page_url, fetch=fetch, parser=parser)
-    return compare(
-        page_url, found, account_id=account_id, display_name=display_name
-    )
+    return compare(page_url, found, account_id=account_id, display_name=display_name)
 
 
 def parse_rows(html: str, *, base_url: str = "") -> tuple[RegistryEntry, ...]:
@@ -173,9 +172,7 @@ def parse_rows(html: str, *, base_url: str = "") -> tuple[RegistryEntry, ...]:
             ((anchor, url) for anchor, url in anchors if _host(url) in official),
             None,
         )
-        addresses = tuple(
-            url for _, url in anchors if card is None or url != card[1]
-        )
+        addresses = tuple(url for _, url in anchors if card is None or url != card[1])
         if not addresses and card is not None:
             addresses = (card[1],)
 
@@ -229,7 +226,9 @@ def _fetch_with_retry(query: str, *, timeout_seconds: int) -> SearchPage | None:
         log.warning("RKN refused the search: HTTP %s", response.status_code)
         return None
 
-    return SearchPage(html=response.text, url=str(response.url), status=response.status_code)
+    return SearchPage(
+        html=response.text, url=str(response.url), status=response.status_code
+    )
 
 
 def _form_data(query: str) -> dict:

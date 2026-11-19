@@ -3,6 +3,7 @@
 The contract is the same list of keys as the enrichment step. A test asserts
 that, so a model prompt and a criterion cannot drift apart silently.
 """
+
 import pytest
 from pydantic import ValidationError
 

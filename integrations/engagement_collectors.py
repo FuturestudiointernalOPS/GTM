@@ -16,6 +16,7 @@ Minimum row contract:
 A row without URL or date is skipped and counted. A row with a URL and a date
 but no readable value becomes an unreadable item, never a zero.
 """
+
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
@@ -376,7 +377,13 @@ def _item_url(row: dict, platform: str, kind: str) -> str | None:
         channel = _text(
             _first(
                 row,
-                ("channel", "channel_login", "channelLogin", "user_login", "broadcaster_login"),
+                (
+                    "channel",
+                    "channel_login",
+                    "channelLogin",
+                    "user_login",
+                    "broadcaster_login",
+                ),
             )
         )
         if kind == "STREAM" and channel:

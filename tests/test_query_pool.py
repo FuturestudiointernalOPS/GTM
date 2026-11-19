@@ -1,4 +1,5 @@
 """Tests for the query pool: syntax conversion, rotation and tracking ids."""
+
 from collections import Counter
 
 import pytest

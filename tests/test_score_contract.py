@@ -5,6 +5,7 @@ fill every column the schema declares, and must respect its checks. No database
 is needed; the schema file is read directly, so the test fails as soon as one
 side moves without the other.
 """
+
 import re
 from fractions import Fraction
 from pathlib import Path
@@ -158,9 +159,7 @@ def test_the_score_is_an_integer_between_zero_and_one_hundred():
 
 def test_the_bounds_follow_the_schema_rule():
     complete = score_creator(creator()).to_score_run()
-    incomplete = score_creator(
-        creator(published_last_30_days=None)
-    ).to_score_run()
+    incomplete = score_creator(creator(published_last_30_days=None)).to_score_run()
 
     assert complete is not None and incomplete is not None
     assert complete["bounds_lower"] == complete["total_exact"]
