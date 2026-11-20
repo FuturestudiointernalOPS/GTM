@@ -100,6 +100,44 @@ def test_a_refused_row_is_a_baserow_error_without_the_token():
 
 
 @respx.mock
+def test_iter_rows_follows_next_pages():
+    route = respx.get(f"{BASE}/database/rows/table/{TABLE}/").mock(
+        side_effect=[
+            httpx.Response(
+                200,
+                json={
+                    "next": "page-2",
+                    "results": [{"id": 1}, {"id": 2}],
+                },
+            ),
+            httpx.Response(200, json={"next": None, "results": [{"id": 3}]}),
+        ]
+    )
+
+    rows = list(make_client().iter_rows(TABLE, size=2, max_pages=5))
+
+    assert [row["id"] for row in rows] == [1, 2, 3]
+    assert route.call_count == 2
+    assert route.calls[0].request.url.params["page"] == "1"
+    assert route.calls[1].request.url.params["page"] == "2"
+
+
+@respx.mock
+def test_iter_rows_respects_the_page_cap():
+    route = respx.get(f"{BASE}/database/rows/table/{TABLE}/").mock(
+        return_value=httpx.Response(
+            200,
+            json={"next": "still-more", "results": [{"id": 1}]},
+        )
+    )
+
+    rows = list(make_client().iter_rows(TABLE, max_pages=1))
+
+    assert len(rows) == 1
+    assert route.call_count == 1
+
+
+@respx.mock
 def test_a_temporary_failure_is_retried_then_reported():
     route = respx.patch(f"{BASE}/database/rows/table/{TABLE}/9/").mock(
         return_value=httpx.Response(503, json={"detail": "busy"})
