@@ -12,7 +12,7 @@
 #   up        create or start the container, wait, apply the schema if empty
 #   down      stop and remove the container (the volume is kept)
 #   reset     remove the container AND the volume (asks for confirmation)
-#   migrate   apply 003_engagement.sql and 004_sync.sql to an existing database
+#   migrate   apply 003, 004 and 005 to an existing database
 #   check     replay smoke_test.sql (ends with ROLLBACK, leaves nothing)
 #   test      run tests/test_postgres_live.py against this container
 #   psql      open an interactive psql session
@@ -235,7 +235,8 @@ cmd_migrate() {
     require_running
     psql_file 003_engagement.sql
     psql_file 004_sync.sql
-    echo "Migrations 003_engagement.sql and 004_sync.sql applied (idempotent)."
+    psql_file 005_evidence.sql
+    echo "Migrations 003, 004 and 005 applied (idempotent)."
 }
 
 cmd_check() {
@@ -282,7 +283,7 @@ Usage: db/postgres/container.sh <command>
   up        create or start the container, wait, apply the schema if empty
   down      stop and remove the container (the volume is kept)
   reset     remove the container AND the volume (asks for confirmation)
-  migrate   apply 003_engagement.sql and 004_sync.sql to an existing database
+  migrate   apply 003, 004 and 005 to an existing database
   check     replay smoke_test.sql (ends with ROLLBACK, leaves nothing)
   test      run tests/test_postgres_live.py against this container
   psql      open an interactive psql session

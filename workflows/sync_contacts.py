@@ -26,6 +26,8 @@ from workflows.sync_common import (
     BaserowTables,
     SyncError,
     error_fields,
+    link_ids,
+    resolve_record_link,
     success_fields,
 )
 
@@ -206,37 +208,7 @@ def _apply_contact(
 def _resolve_record(
     connection, tables: BaserowTables, row: dict
 ) -> tuple[str, str | None]:
-    record_type = _text(row.get("record_type")).upper()
-    creator_ids = _link_ids(row.get("creator"))
-    buyer_ids = _link_ids(row.get("acheteur"))
-
-    if record_type == CREATOR:
-        link_ids, table_id = creator_ids, tables.creators
-    elif record_type == BUYER:
-        link_ids, table_id = buyer_ids, tables.buyers
-    elif creator_ids and not buyer_ids:
-        link_ids, table_id = creator_ids, tables.creators
-    elif buyer_ids and not creator_ids:
-        link_ids, table_id = buyer_ids, tables.buyers
-    elif creator_ids and buyer_ids:
-        return "", "la ligne porte à la fois un créateur et un acheteur"
-    else:
-        return "", "record_type ou lien vers une fiche absent"
-
-    if not link_ids:
-        return "", f"aucune ligne {record_type or 'de fiche'} liée"
-
-    resolved = sync_store.resolve_link(connection, table_id, link_ids[0])
-    if resolved is None:
-        return "", (
-            "fiche liée non synchronisée : lancer d'abord la synchronisation "
-            "PostgreSQL → Baserow"
-        )
-
-    entity_type, entity_id = resolved
-    if record_type and entity_type != record_type:
-        return "", f"le lien pointe vers {entity_type}, pas {record_type}"
-    return entity_id, None
+    return resolve_record_link(connection, tables, row)
 
 
 def _validate(
@@ -292,8 +264,8 @@ def _event_id(row: dict) -> str:
         [
             str(row.get("id") or ""),
             _text(row.get("record_type")),
-            ",".join(str(value) for value in _link_ids(row.get("creator"))),
-            ",".join(str(value) for value in _link_ids(row.get("acheteur"))),
+            ",".join(str(value) for value in link_ids(row.get("creator"))),
+            ",".join(str(value) for value in link_ids(row.get("acheteur"))),
             _text(row.get("role")),
             _text(row.get("person_name")),
             _text(row.get("channel_type")),
@@ -307,25 +279,6 @@ def _event_id(row: dict) -> str:
     )
     digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()
     return f"contact:{row.get('id')}:{digest}"
-
-
-def _link_ids(value) -> list[int]:
-    if value is None:
-        return []
-    if isinstance(value, dict):
-        value = [value]
-    if not isinstance(value, (list, tuple)):
-        value = [value]
-
-    ids = []
-    for item in value:
-        if isinstance(item, dict):
-            item = item.get("id")
-        try:
-            ids.append(int(item))
-        except (TypeError, ValueError):
-            continue
-    return ids
 
 
 def _row_id(row: dict) -> int | None:

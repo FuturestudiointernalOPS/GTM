@@ -134,6 +134,51 @@ SELECT transition_record(
 )
 """
 
+# --- evidence -------------------------------------------------------------
+
+UPSERT_SOURCE = """
+INSERT INTO source (url, normalized_url, kind)
+VALUES (%s, %s, %s)
+ON CONFLICT (normalized_url) DO UPDATE SET url = EXCLUDED.url
+RETURNING id
+"""
+
+UPSERT_SNAPSHOT = """
+INSERT INTO source_snapshot (source_id, consulted_at, query_used, service)
+VALUES (%s, %s, %s, %s)
+ON CONFLICT (source_id, consulted_at)
+DO UPDATE SET
+    query_used = COALESCE(EXCLUDED.query_used, source_snapshot.query_used),
+    service = COALESCE(EXCLUDED.service, source_snapshot.service)
+RETURNING id
+"""
+
+LINK_RECORD_SOURCE = """
+INSERT INTO record_source (record_id, source_snapshot_id, role)
+VALUES (%s, %s, %s)
+ON CONFLICT (record_id, source_snapshot_id) DO NOTHING
+"""
+
+INSERT_FACT = """
+INSERT INTO fact (
+    record_id, key, value_text, value_number, value_boolean,
+    proof_level, confidence, source_snapshot_id, recorded_by,
+    external_event_id
+) VALUES (
+    %s, %s, %s, %s, %s,
+    %s::proof_level, %s::confidence_level, %s, %s, %s
+)
+ON CONFLICT (external_event_id) DO NOTHING
+RETURNING id
+"""
+
+SELECT_FACT_BY_EVENT = """
+SELECT id, value_text, value_number, value_boolean,
+       proof_level::text, confidence::text, is_current, recorded_at
+FROM fact
+WHERE external_event_id = %s
+"""
+
 # --- contacts -------------------------------------------------------------
 
 RESOLVE_LINK = """
@@ -399,6 +444,95 @@ def resolve_link(connection, table_id: int, row_id: int) -> tuple[str, str] | No
     if row is None:
         return None
     return str(row[0]), str(row[1])
+
+
+def upsert_source(
+    connection, *, url: str, normalized_url: str, kind: str | None
+) -> str:
+    with connection.cursor() as cursor:
+        cursor.execute(UPSERT_SOURCE, (url, normalized_url, kind))
+        return str(cursor.fetchone()[0])
+
+
+def upsert_snapshot(
+    connection,
+    *,
+    source_id: str,
+    consulted_at: str,
+    query_used: str | None,
+    service: str | None,
+) -> str:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            UPSERT_SNAPSHOT,
+            (source_id, consulted_at, query_used, service),
+        )
+        return str(cursor.fetchone()[0])
+
+
+def link_record_source(
+    connection,
+    *,
+    record_id: str,
+    snapshot_id: str,
+    role: str = "OTHER",
+) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(LINK_RECORD_SOURCE, (record_id, snapshot_id, role))
+
+
+def insert_fact(
+    connection,
+    *,
+    record_id: str,
+    key: str,
+    value_column: str,
+    value,
+    proof_level: str,
+    confidence: str,
+    snapshot_id: str,
+    recorded_by: str,
+    external_event_id: str,
+) -> str | None:
+    text = number = boolean = None
+    if value_column == "value_text":
+        text = value
+    elif value_column == "value_number":
+        number = value
+    elif value_column == "value_boolean":
+        boolean = value
+    else:
+        raise ValueError(f"unsupported fact value column: {value_column!r}")
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            INSERT_FACT,
+            (
+                record_id,
+                key,
+                text,
+                number,
+                boolean,
+                proof_level,
+                confidence,
+                snapshot_id,
+                recorded_by,
+                external_event_id,
+            ),
+        )
+        row = cursor.fetchone()
+    return None if row is None else str(row[0])
+
+
+def find_fact(connection, external_event_id: str) -> str | None:
+    fact = load_fact_by_event(connection, external_event_id)
+    return None if fact is None else str(fact["id"])
+
+
+def load_fact_by_event(connection, external_event_id: str) -> dict | None:
+    with connection.cursor() as cursor:
+        cursor.execute(SELECT_FACT_BY_EVENT, (external_event_id,))
+        return _one_dict(cursor)
 
 
 def load_record_status(connection, record_id: str) -> str | None:

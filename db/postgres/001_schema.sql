@@ -586,6 +586,9 @@ CREATE TABLE fact (
     source_snapshot_id  uuid NOT NULL REFERENCES source_snapshot(id),
     recorded_at         timestamptz NOT NULL DEFAULT now(),
     recorded_by         text,
+    -- Stable identity of the incoming proof, so a replay cannot insert the
+    -- same fact twice. Facts created by the automatic run leave it NULL.
+    external_event_id   text,
     supersedes_id       uuid REFERENCES fact(id),
     is_current          boolean NOT NULL DEFAULT true,
     CONSTRAINT fact_one_value CHECK (
@@ -596,6 +599,7 @@ CREATE TABLE fact (
 CREATE INDEX fact_record_key_idx ON fact (record_id, key);
 CREATE INDEX fact_current_idx ON fact (record_id, key) WHERE is_current;
 CREATE INDEX fact_source_idx ON fact (source_snapshot_id);
+CREATE UNIQUE INDEX fact_external_event_id_idx ON fact (external_event_id);
 
 -- ---------------------------------------------------------------------------
 -- 6bis. Mesure de l'engagement — échantillon et résultat

@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from integrations import sync_store
+
 
 class SyncError(RuntimeError):
     """The service cannot start: a setting or a table is missing."""
@@ -21,6 +23,7 @@ class BaserowTables:
     buyers: int
     platforms: int
     contacts: int | None = None
+    proofs: int | None = None
 
     @classmethod
     def resolve(
@@ -32,6 +35,7 @@ class BaserowTables:
         buyers=None,
         platforms=None,
         contacts=None,
+        proofs=None,
     ) -> "BaserowTables":
         """Use configured table ids, or discover them through the schema API."""
         if creators and buyers and platforms:
@@ -40,6 +44,7 @@ class BaserowTables:
                 buyers=table_id("buyers", buyers),
                 platforms=table_id("platforms", platforms),
                 contacts=table_id("contacts", contacts) if contacts else None,
+                proofs=table_id("proofs", proofs) if proofs else None,
             )
 
         if not database_id:
@@ -69,6 +74,7 @@ class BaserowTables:
             buyers=by_name["Acheteurs"],
             platforms=by_name["Plateformes"],
             contacts=by_name.get("Contacts"),
+            proofs=by_name.get("Preuves"),
         )
 
 
@@ -80,6 +86,71 @@ def table_id(name: str, value) -> int:
     if resolved <= 0:
         raise SyncError(f"invalid Baserow table id for {name}: {value!r}")
     return resolved
+
+
+def resolve_record_link(
+    connection, tables: "BaserowTables", row: dict
+) -> tuple[str, str | None]:
+    """Resolve the creator or buyer link of a Baserow row to a record id."""
+    record_type = clean_text(row.get("record_type")).upper()
+    creator_ids = link_ids(row.get("creator"))
+    buyer_ids = link_ids(row.get("acheteur"))
+
+    if record_type == "CREATOR":
+        selected, table_id = creator_ids, tables.creators
+    elif record_type == "BUYER":
+        selected, table_id = buyer_ids, tables.buyers
+    elif creator_ids and not buyer_ids:
+        selected, table_id = creator_ids, tables.creators
+    elif buyer_ids and not creator_ids:
+        selected, table_id = buyer_ids, tables.buyers
+    elif creator_ids and buyer_ids:
+        return "", "la ligne porte à la fois un créateur et un acheteur"
+    else:
+        return "", "record_type ou lien vers une fiche absent"
+
+    if not selected:
+        return "", f"aucune ligne {record_type or 'de fiche'} liée"
+
+    resolved = sync_store.resolve_link(connection, table_id, selected[0])
+    if resolved is None:
+        return "", (
+            "fiche liée non synchronisée : lancer d'abord la synchronisation "
+            "PostgreSQL → Baserow"
+        )
+
+    entity_type, entity_id = resolved
+    if record_type and entity_type != record_type:
+        return "", f"le lien pointe vers {entity_type}, pas {record_type}"
+    return entity_id, None
+
+
+def link_ids(value) -> list[int]:
+    """Read a Baserow link_row value as a list of row ids."""
+    if value is None:
+        return []
+    if isinstance(value, dict):
+        value = [value]
+    if not isinstance(value, (list, tuple)):
+        value = [value]
+
+    ids = []
+    for item in value:
+        if isinstance(item, dict):
+            item = item.get("id")
+        try:
+            ids.append(int(item))
+        except (TypeError, ValueError):
+            continue
+    return ids
+
+
+def clean_text(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, dict):
+        value = value.get("value", "")
+    return " ".join(str(value).split())
 
 
 def success_fields() -> dict:
