@@ -726,8 +726,13 @@ Les publicités brutes sont importées par `workflows/sync_ads.py` tant qu'elles
 sont `DRAFT` ou `SUBMITTED`. Le service contrôle les champs obligatoires,
 calcule les chiffres INN/OGRN (`processing/russian_ids.py`), résout le support
 plateforme et les liens créateur, puis insère la publicité. Une publicité déjà
-`IMPORTED` n'est jamais réécrite : une correction est une nouvelle ligne. Le
-lien acheteur reste vide et appartient au rapprochement INN/OGRN.
+`IMPORTED` n'est jamais réécrite : une correction est une nouvelle ligne.
+
+Le rapprochement acheteur est écrit par `workflows/match_ads.py` : il garde
+l'INN et l'OGRN dont le chiffre de contrôle est valide, cherche un acheteur
+unique, le crée depuis le nom d'annonceur s'il manque, et refuse de choisir
+quand deux acheteurs correspondent. Une publicité n'est marquée `IMPORTED`
+qu'une fois le lien acheteur disponible dans Baserow.
 
 ### 6.4 Conflits
 
@@ -846,6 +851,7 @@ Champs facultatifs couverts : `agency`, `revenue_band`, `competitors`,
 | `workflows/sync_contacts.py` | service d'entrée des contacts et de l'opt-out immédiat |
 | `workflows/sync_evidence.py` | service d'entrée des preuves acceptées |
 | `workflows/sync_ads.py` | service d'entrée des publicités étiquetées |
+| `workflows/match_ads.py` | rapprochement INN/OGRN des publicités vers les acheteurs |
 | `db/postgres/smoke_test.sql` | test manuel qui insère, vérifie les vues et annule tout |
 | `tests/test_baserow_schema.py` | contrôles hors ligne du schéma Baserow |
 | `tests/test_baserow_apply.py` | tests du seeder avec une API Baserow simulée |

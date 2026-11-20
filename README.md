@@ -107,11 +107,13 @@ python -m workflows.sync_pull
 python -m workflows.sync_contacts
 python -m workflows.sync_evidence
 python -m workflows.sync_ads
+python -m workflows.match_ads
 python -m workflows.sync_push --help
 python -m workflows.sync_pull --help
 python -m workflows.sync_contacts --help
 python -m workflows.sync_evidence --help
 python -m workflows.sync_ads --help
+python -m workflows.match_ads --help
 ```
 
 Chaque commande traite une passe puis s'arrête : elle peut être appelée par une
@@ -129,8 +131,9 @@ bloque immédiatement la fiche. Les preuves marquées `ACCEPTED` deviennent des
 faits sourcés et datés ; une preuve en attente ou refusée n'entre pas dans le
 score. Les publicités étiquetées en `DRAFT` ou `SUBMITTED` sont importées avec
 leurs identifiants INN/OGRN contrôlés et leurs liens créateur ; une publicité
-déjà `IMPORTED` n'est plus modifiée. Le rapprochement automatique de
-l'annonceur vers une fiche acheteur reste à brancher.
+déjà `IMPORTED` n'est plus modifiée. Le rapprochement acheteur retrouve ou crée
+la fiche acheteur à partir de l'INN/OGRN ; une publicité n'est marquée
+`IMPORTED` qu'une fois le lien acheteur disponible.
 
 ## Tests
 

@@ -430,6 +430,29 @@ chiffres de contrôle INN et OGRN, résout le support publicitaire via la table
 .venv/bin/python -m workflows.sync_ads --help
 ```
 
+## Rapprochement acheteur des publicités (lot 3d)
+
+Le service de rapprochement lit les publicités encore `DRAFT` ou `SUBMITTED`
+qui n'ont pas de buyer, puis :
+
+1. garde l'INN et l'OGRN dont le chiffre de contrôle est valide ;
+2. cherche un acheteur par INN et par OGRN ;
+3. s'il y a exactement un candidat, le rattache ;
+4. si aucun candidat n'existe, crée l'acheteur depuis le nom d'annonceur et
+   l'identifiant valide ;
+5. si plusieurs acheteurs correspondent, marque la publicité `AMBIGUOUS` sans
+   choisir.
+
+Une publicité n'est marquée `IMPORTED` que lorsque le lien acheteur existe
+côté Baserow. Un acheteur créé pendant la passe doit d'abord être poussé par
+`sync_push` ; la passe suivante termine le rattachement et passe la publicité
+en `IMPORTED`.
+
+```bash
+.venv/bin/python -m workflows.match_ads --limit 100
+.venv/bin/python -m workflows.match_ads --help
+```
+
 ## Erreurs fréquentes
 
 | Symptôme | Cause probable | Solution |
@@ -447,7 +470,7 @@ chiffres de contrôle INN et OGRN, résout le support publicitaire via la table
    régler les permissions.
 2. Renseigner le jeton de lignes et les identifiants de tables, appliquer
    `004_sync.sql`, puis lancer une passe de synchronisation.
-3. Rapprocher les publicités des acheteurs par INN/OGRN, puis écrire
-   `buyer_record_id` et `match_status`, et passer les lignes en `IMPORTED`.
+3. Valider la chaîne complète contre une instance Baserow réelle et un export
+   réel, puis ajuster les formats ou permissions si nécessaire.
 4. Ajouter une politique de sauvegarde et de restauration PostgreSQL.
 5. Trancher l'attribution partielle (C-02/B-01) avant de figer les scores.

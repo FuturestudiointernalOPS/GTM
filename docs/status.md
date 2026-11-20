@@ -21,6 +21,7 @@ Dernière revue : 2026-11-20.
 | Contacts Baserow → PostgreSQL | lot 3a prêt, testé hors ligne et contre le conteneur PostgreSQL | `workflows/sync_contacts.py` |
 | Preuves Baserow → PostgreSQL | lot 3b prêt, testé hors ligne et contre le conteneur PostgreSQL | `workflows/sync_evidence.py`, `processing/fact_values.py` |
 | Publicités Baserow → PostgreSQL | lot 3c prêt, testé hors ligne et contre le conteneur PostgreSQL | `workflows/sync_ads.py`, `processing/russian_ids.py` |
+| Rapprochement acheteur des publicités | lot 3d prêt, testé hors ligne et contre le conteneur PostgreSQL | `workflows/match_ads.py` |
 | Conteneur PostgreSQL local | fourni et validé : schéma 1.4, smoke test, tests d'intégration | `db/postgres/container.sh` |
 | Contrôle d'éligibilité | logique prête et branchée au run ; les contrôles eux-mêmes restent une procédure humaine | `processing/eligibility.py`, `workflows/eligibility_step.py` |
 | Commande de run | disponible | `python -m main` |
@@ -37,9 +38,9 @@ Dernière revue : 2026-11-20.
   le fichier `--verification`, produit par la procédure humaine.
 - **Synchronisation Baserow ↔ PostgreSQL** : la sortie PostgreSQL → Baserow
   est écrite pour les fiches et les plateformes. L'entrée Baserow → PostgreSQL
-  est écrite pour les actions de revue, les contacts, les preuves acceptées et
-  les publicités brutes. Le rapprochement automatique de l'annonceur vers une
-  fiche acheteur reste à brancher.
+  est écrite pour les actions de revue, les contacts, les preuves acceptées, les
+  publicités brutes et le rapprochement acheteur. L'exécution réelle contre une
+  instance Baserow reste à valider.
 - **Calibration** : les seuils Rutube et YouTube sont provisoires ; le cas
   VK Video Live seul reste en engagement inconnu.
 
@@ -101,6 +102,7 @@ python -m workflows.sync_pull
 python -m workflows.sync_contacts
 python -m workflows.sync_evidence
 python -m workflows.sync_ads
+python -m workflows.match_ads
 ```
 
 La CI exécute `up`, `check` et `test` dans le job `postgres`.
