@@ -326,9 +326,37 @@ trace ; après le nombre d'essais maximal, `next_attempt_at` passe à `NULL` et
 l'élément attend une intervention. Pour le rejouer, remettre `attempts = 0` et
 `next_attempt_at = now()`.
 
-La synchronisation inverse (actions humaines Baserow → PostgreSQL) n'est pas
-encore écrite. Ne pas créer de vues Baserow qui supposeraient des champs non
-synchronisés sans le signaler.
+## Synchronisation Baserow → PostgreSQL (lot 2)
+
+Le sens inverse lit les lignes `Createurs` et `Acheteurs` qui portent une
+action de revue. Pour chaque action, il :
+
+1. calcule une empreinte stable (ligne, action, note, date) et l'écrit dans
+   `baserow_event` ; une empreinte déjà appliquée ou rejetée est ignorée ;
+2. relit la fiche dans PostgreSQL et valide la transition ;
+3. écrit `review_request` puis `workflow_event` par le point d'entrée unique ;
+4. acquitte la ligne Baserow avec `review_action_processed = true`.
+
+Une transition refusée laisse `baserow_event.status = REJECTED` et affiche un
+message lisible dans `sync_error` ; le statut de la fiche ne change pas. Si
+l'acquittement Baserow échoue après le commit PostgreSQL, l'événement reste
+`PENDING` et la passe suivante termine l'acquittement sans rejouer la
+transition.
+
+Actions acceptées : `REQUEST_REVIEW`, `APPROVE`, `REJECT`, `COMPLIANCE_REVIEW`,
+`START_AUDIT`, `ADD_TO_POOL`, `MARK_CONTACTED`, `RECORD_OPT_OUT`. Les règles de
+statut, de justification et de responsable sont dans
+`processing/review_actions.py`. `APPROVE` et `REJECT` exigent une note et un
+`assigned_to` ; sortir de `COMPLIANCE_REVIEW` aussi. Aucune action ne rouvre
+une fiche `OPT_OUT` ou `CLIENT`, sauf `RECORD_OPT_OUT` qui reste le plus
+restrictif.
+
+```bash
+.venv/bin/python -m workflows.sync_pull
+.venv/bin/python -m workflows.sync_pull --help
+```
+
+Les contacts, preuves et publicités ne sont pas encore repris par ce service.
 
 ## Erreurs fréquentes
 
@@ -347,6 +375,7 @@ synchronisés sans le signaler.
    régler les permissions.
 2. Renseigner le jeton de lignes et les identifiants de tables, appliquer
    `004_sync.sql`, puis lancer une passe de synchronisation.
-3. Brancher `baserow_event` sur les actions humaines Baserow → PostgreSQL.
+3. Brancher les `Contacts`, `Preuves` et `Publicites_etiquetees` sur la
+   synchronisation Baserow → PostgreSQL.
 4. Ajouter une politique de sauvegarde et de restauration PostgreSQL.
 5. Trancher l'attribution partielle (C-02/B-01) avant de figer les scores.

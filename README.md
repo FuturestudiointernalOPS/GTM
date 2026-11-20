@@ -103,10 +103,12 @@ champ saisi par un humain.
 
 ```bash
 python -m workflows.sync_push --limit 50
+python -m workflows.sync_pull
 python -m workflows.sync_push --help
+python -m workflows.sync_pull --help
 ```
 
-La commande traite une passe puis s'arrête : elle peut être appelée par une
+Chaque commande traite une passe puis s'arrête : elle peut être appelée par une
 tâche planifiée. `BASEROW_ROW_TOKEN` doit être un jeton de base durable, pas le
 JWT de structure qui expire au bout d'une heure. Les trois identifiants de
 tables évitent d'interroger la structure Baserow à chaque passe ; on les lit
@@ -114,7 +116,9 @@ dans l'URL `https://…/database/{id}/table/{id}/`.
 
 La file est alimentée automatiquement par la base : une fiche créée ou modifiée
 dépose un changement en attente, et un seul changement reste en attente par
-fiche. Les actions humaines Baserow → PostgreSQL ne sont pas encore branchées.
+fiche. Le sens inverse lit les actions de revue et de refus de contact,
+valide la transition, écrit la demande et le journal, puis acquitte la ligne
+Baserow. Les contacts, preuves et publicités ne sont pas encore repris.
 
 ## Tests
 

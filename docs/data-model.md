@@ -701,6 +701,14 @@ créateur et acheteur et la table `Plateformes`, jamais un champ `owner=baserow`
 6. Les écritures faites par le service lui-même sont marquées et ignorées à la
    réception, pour éviter une boucle PG → Baserow → PG.
 
+Le lot 2 est implémenté par `workflows/sync_pull.py` : il lit les actions de
+revue et le refus de contact, déduplique chaque empreinte dans `baserow_event`,
+valide la transition avec `processing/review_actions.py`, écrit
+`review_request` et `workflow_event`, puis acquitte la ligne Baserow. Une
+transition déjà commitée est reprise sans second journal ; un acquittement
+échoué reste `PENDING` et sera terminé à la passe suivante. Les contacts,
+preuves et publicités restent à brancher.
+
 ### 6.4 Conflits
 
 | Cas | Règle |
@@ -803,13 +811,15 @@ Champs facultatifs couverts : `agency`, `revenue_band`, `competitors`,
 | `db/baserow/schema.json` | schéma Baserow déclaratif, 8 tables, types, options et propriétaires |
 | `db/baserow/apply_schema.py` | seeder Baserow idempotent, mode `--dry-run` |
 | `integrations/baserow.py` | client HTTP des opérations de schéma et de lignes Baserow |
-| `integrations/sync_store.py` | lecture et écriture de la file, des correspondances et des fiches |
+| `integrations/sync_store.py` | lecture et écriture de la file, des correspondances, des fiches et des événements entrants |
 | `db/postgres/001_schema.sql` | DDL PostgreSQL, contraintes, triggers, vues de contrat |
 | `db/postgres/002_seed_reference.sql` | critères 1.4 actifs, 1.3 et 1.2 conservés en historique, et référentiel plateformes daté |
 | `db/postgres/003_engagement.sql` | migration 1.3 vers 1.4 : champs, échantillon, résultat de mesure, vue |
 | `db/postgres/004_sync.sql` | migration de synchronisation : location, index d'unicité, déclencheurs |
 | `processing/baserow_mapping.py` | traduction pure d'une fiche PostgreSQL vers les champs Baserow |
+| `processing/review_actions.py` | règles pures des actions de revue Baserow → PostgreSQL |
 | `workflows/sync_push.py` | service de sortie PostgreSQL → Baserow et sa commande |
+| `workflows/sync_pull.py` | service d'entrée Baserow → PostgreSQL et sa commande |
 | `db/postgres/smoke_test.sql` | test manuel qui insère, vérifie les vues et annule tout |
 | `tests/test_baserow_schema.py` | contrôles hors ligne du schéma Baserow |
 | `tests/test_baserow_apply.py` | tests du seeder avec une API Baserow simulée |
