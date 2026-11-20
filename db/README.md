@@ -305,13 +305,14 @@ BASEROW_ROW_AUTH_SCHEME=Token
 BASEROW_TABLE_CREATORS=...
 BASEROW_TABLE_BUYERS=...
 BASEROW_TABLE_PLATFORMS=...
+BASEROW_TABLE_CONTACTS=...
 ```
 
 Les identifiants de tables se lisent dans l'URL Baserow
 `https://…/database/{id}/table/{id}/`. Le jeton de structure expire au bout
-d'une heure ; il ne convient pas au service. Sans les trois identifiants, le
-service tente de découvrir les tables, ce qui suppose un jeton autorisé à lire
-la structure.
+d'une heure ; il ne convient pas au service. Sans ces identifiants, le service
+tente de découvrir les tables, ce qui suppose un jeton autorisé à lire la
+structure.
 
 ### Lancer
 
@@ -356,7 +357,28 @@ restrictif.
 .venv/bin/python -m workflows.sync_pull --help
 ```
 
-Les contacts, preuves et publicités ne sont pas encore repris par ce service.
+## Synchronisation Baserow → PostgreSQL — contacts (lot 3a)
+
+Le service des contacts lit la table `Contacts`, résout le lien vers la fiche
+(createur ou acheteur) via `baserow_link`, puis upsert le contact par
+`(record_id, channel_type, lower(channel_value))`.
+
+- Un contact non professionnel et non public est refusé (K-01), sauf s'il est
+  `BLOCKED` ou `OPT_OUT`.
+- Un `OPT_OUT` insère immédiatement un `contact_event` ; le déclencheur
+  `apply_contact_event` passe la fiche en `OPT_OUT` et tous ses contacts en
+  `OPT_OUT`.
+- Une fiche déjà `OPT_OUT` force tout contact entrant à `OPT_OUT` : elle n'est
+  jamais réactivée automatiquement.
+- Une ligne dont la fiche liée n'a pas encore été poussée vers Baserow est
+  refusée avec un message demandant de lancer la sortie d'abord.
+
+```bash
+.venv/bin/python -m workflows.sync_contacts
+.venv/bin/python -m workflows.sync_contacts --help
+```
+
+Les preuves et publicités ne sont pas encore reprises par ce service.
 
 ## Erreurs fréquentes
 
@@ -375,7 +397,7 @@ Les contacts, preuves et publicités ne sont pas encore repris par ce service.
    régler les permissions.
 2. Renseigner le jeton de lignes et les identifiants de tables, appliquer
    `004_sync.sql`, puis lancer une passe de synchronisation.
-3. Brancher les `Contacts`, `Preuves` et `Publicites_etiquetees` sur la
-   synchronisation Baserow → PostgreSQL.
+3. Brancher les `Preuves` et `Publicites_etiquetees` sur la synchronisation
+   Baserow → PostgreSQL.
 4. Ajouter une politique de sauvegarde et de restauration PostgreSQL.
 5. Trancher l'attribution partielle (C-02/B-01) avant de figer les scores.

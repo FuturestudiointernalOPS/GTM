@@ -18,6 +18,7 @@ Dernière revue : 2026-11-20.
 | Fiches, mesures, scores, décisions en PostgreSQL | prêt, testé avec une connexion simulée et contre le conteneur PostgreSQL | `integrations/record_store.py`, `integrations/postgres.py` |
 | Synchronisation PostgreSQL → Baserow (fiches, plateformes) | lot 1 prêt, testé hors ligne et contre le conteneur PostgreSQL | `workflows/sync_push.py`, `processing/baserow_mapping.py` |
 | Actions humaines Baserow → PostgreSQL (revue, opt-out) | lot 2 prêt, testé hors ligne et contre le conteneur PostgreSQL | `workflows/sync_pull.py`, `processing/review_actions.py` |
+| Contacts Baserow → PostgreSQL | lot 3a prêt, testé hors ligne et contre le conteneur PostgreSQL | `workflows/sync_contacts.py` |
 | Conteneur PostgreSQL local | fourni et validé : schéma 1.4, smoke test, tests d'intégration | `db/postgres/container.sh` |
 | Contrôle d'éligibilité | logique prête et branchée au run ; les contrôles eux-mêmes restent une procédure humaine | `processing/eligibility.py`, `workflows/eligibility_step.py` |
 | Commande de run | disponible | `python -m main` |
@@ -34,8 +35,8 @@ Dernière revue : 2026-11-20.
   le fichier `--verification`, produit par la procédure humaine.
 - **Synchronisation Baserow ↔ PostgreSQL** : la sortie PostgreSQL → Baserow
   est écrite pour les fiches et les plateformes. L'entrée Baserow → PostgreSQL
-  est écrite pour les actions de revue et le refus de contact. Les contacts,
-  preuves et publicités restent à brancher.
+  est écrite pour les actions de revue et les contacts, y compris l'opt-out
+  immédiat. Les preuves et publicités restent à brancher.
 - **Calibration** : les seuils Rutube et YouTube sont provisoires ; le cas
   VK Video Live seul reste en engagement inconnu.
 
@@ -94,6 +95,7 @@ Pour vérifier les deux sens sans attendre une tâche planifiée :
 ```bash
 python -m workflows.sync_push --limit 50
 python -m workflows.sync_pull
+python -m workflows.sync_contacts
 ```
 
 La CI exécute `up`, `check` et `test` dans le job `postgres`.

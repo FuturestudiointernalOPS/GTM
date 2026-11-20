@@ -35,7 +35,7 @@ au minimum :
 | `APIFY_API_KEY`, `ENGAGEMENT_ACTOR_ID` | échantillon d'engagement (facultatif : sans acteur, les créateurs partent en revue) |
 | `DATABASE_URL` | PostgreSQL (obligatoire hors `--dry-run`) |
 | `BASEROW_ROW_TOKEN` | jeton durable de lecture/écriture des lignes Baserow (synchronisation) |
-| `BASEROW_TABLE_CREATORS`, `BASEROW_TABLE_BUYERS`, `BASEROW_TABLE_PLATFORMS` | identifiants des trois tables Baserow utilisées par la synchronisation |
+| `BASEROW_TABLE_CREATORS`, `BASEROW_TABLE_BUYERS`, `BASEROW_TABLE_PLATFORMS`, `BASEROW_TABLE_CONTACTS` | identifiants des tables Baserow utilisées par la synchronisation |
 | `RKN_SEARCH_URL`, `SANCTIONS_LIST_URLS`, `BETTING_LICENCE_URLS` | contrôles réglementaires |
 
 `ENGAGEMENT_ACTOR_INPUT` contient l'entrée JSON de l'acteur ; `{platform}` et
@@ -104,8 +104,10 @@ champ saisi par un humain.
 ```bash
 python -m workflows.sync_push --limit 50
 python -m workflows.sync_pull
+python -m workflows.sync_contacts
 python -m workflows.sync_push --help
 python -m workflows.sync_pull --help
+python -m workflows.sync_contacts --help
 ```
 
 Chaque commande traite une passe puis s'arrête : elle peut être appelée par une
@@ -116,9 +118,11 @@ dans l'URL `https://…/database/{id}/table/{id}/`.
 
 La file est alimentée automatiquement par la base : une fiche créée ou modifiée
 dépose un changement en attente, et un seul changement reste en attente par
-fiche. Le sens inverse lit les actions de revue et de refus de contact,
-valide la transition, écrit la demande et le journal, puis acquitte la ligne
-Baserow. Les contacts, preuves et publicités ne sont pas encore repris.
+fiche. Le sens inverse lit les actions de revue, valide la transition, écrit la
+demande et le journal, puis acquitte la ligne Baserow. Les contacts sont
+également repris : un contact non public est refusé (K-01) et un `OPT_OUT`
+bloque immédiatement la fiche. Les preuves et publicités ne sont pas encore
+reprises.
 
 ## Tests
 

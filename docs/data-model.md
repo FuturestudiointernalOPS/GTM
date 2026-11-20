@@ -706,8 +706,13 @@ revue et le refus de contact, déduplique chaque empreinte dans `baserow_event`,
 valide la transition avec `processing/review_actions.py`, écrit
 `review_request` et `workflow_event`, puis acquitte la ligne Baserow. Une
 transition déjà commitée est reprise sans second journal ; un acquittement
-échoué reste `PENDING` et sera terminé à la passe suivante. Les contacts,
-preuves et publicités restent à brancher.
+échoué reste `PENDING` et sera terminé à la passe suivante.
+
+Les contacts sont repris par `workflows/sync_contacts.py` : un contact non
+professionnel et non public est refusé (K-01), et un `OPT_OUT` insère
+immédiatement un `contact_event` que le déclencheur transforme en statut
+`OPT_OUT` pour la fiche et tous ses contacts. Une fiche déjà `OPT_OUT` force
+tout contact entrant à `OPT_OUT`. Les preuves et publicités restent à brancher.
 
 ### 6.4 Conflits
 
@@ -820,6 +825,7 @@ Champs facultatifs couverts : `agency`, `revenue_band`, `competitors`,
 | `processing/review_actions.py` | règles pures des actions de revue Baserow → PostgreSQL |
 | `workflows/sync_push.py` | service de sortie PostgreSQL → Baserow et sa commande |
 | `workflows/sync_pull.py` | service d'entrée Baserow → PostgreSQL et sa commande |
+| `workflows/sync_contacts.py` | service d'entrée des contacts et de l'opt-out immédiat |
 | `db/postgres/smoke_test.sql` | test manuel qui insère, vérifie les vues et annule tout |
 | `tests/test_baserow_schema.py` | contrôles hors ligne du schéma Baserow |
 | `tests/test_baserow_apply.py` | tests du seeder avec une API Baserow simulée |
