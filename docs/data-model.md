@@ -674,6 +674,12 @@ erDiagram
 5. En cas d'échec, `sync_outbox.attempts` et `last_error` conservent la trace ;
    Baserow affiche `sync_status` et `sync_error` sur la fiche.
 
+Le lot 1 est implémenté par `workflows/sync_push.py` : il pousse les fiches
+créateur et acheteur et la table `Plateformes`, jamais un champ `owner=baserow`.
+`004_sync.sql` installe les déclencheurs qui écrivent dans `sync_outbox` et
+`next_attempt_at`, qui sert de location courte au service. Le sens inverse
+(§6.3) reste à écrire.
+
 ### 6.3 Baserow → PostgreSQL
 
 1. Baserow envoie un webhook (ou le service interroge les lignes modifiées).
@@ -796,10 +802,14 @@ Champs facultatifs couverts : `agency`, `revenue_band`, `competitors`,
 |---|---|
 | `db/baserow/schema.json` | schéma Baserow déclaratif, 8 tables, types, options et propriétaires |
 | `db/baserow/apply_schema.py` | seeder Baserow idempotent, mode `--dry-run` |
-| `integrations/baserow.py` | client HTTP des opérations de schéma Baserow |
+| `integrations/baserow.py` | client HTTP des opérations de schéma et de lignes Baserow |
+| `integrations/sync_store.py` | lecture et écriture de la file, des correspondances et des fiches |
 | `db/postgres/001_schema.sql` | DDL PostgreSQL, contraintes, triggers, vues de contrat |
 | `db/postgres/002_seed_reference.sql` | critères 1.4 actifs, 1.3 et 1.2 conservés en historique, et référentiel plateformes daté |
 | `db/postgres/003_engagement.sql` | migration 1.3 vers 1.4 : champs, échantillon, résultat de mesure, vue |
+| `db/postgres/004_sync.sql` | migration de synchronisation : location, index d'unicité, déclencheurs |
+| `processing/baserow_mapping.py` | traduction pure d'une fiche PostgreSQL vers les champs Baserow |
+| `workflows/sync_push.py` | service de sortie PostgreSQL → Baserow et sa commande |
 | `db/postgres/smoke_test.sql` | test manuel qui insère, vérifie les vues et annule tout |
 | `tests/test_baserow_schema.py` | contrôles hors ligne du schéma Baserow |
 | `tests/test_baserow_apply.py` | tests du seeder avec une API Baserow simulée |

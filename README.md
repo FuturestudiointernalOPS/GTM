@@ -34,6 +34,8 @@ au minimum :
 | `EXA_API_KEY`, `SERPAPI_API_KEY` | découverte web |
 | `APIFY_API_KEY`, `ENGAGEMENT_ACTOR_ID` | échantillon d'engagement (facultatif : sans acteur, les créateurs partent en revue) |
 | `DATABASE_URL` | PostgreSQL (obligatoire hors `--dry-run`) |
+| `BASEROW_ROW_TOKEN` | jeton durable de lecture/écriture des lignes Baserow (synchronisation) |
+| `BASEROW_TABLE_CREATORS`, `BASEROW_TABLE_BUYERS`, `BASEROW_TABLE_PLATFORMS` | identifiants des trois tables Baserow utilisées par la synchronisation |
 | `RKN_SEARCH_URL`, `SANCTIONS_LIST_URLS`, `BETTING_LICENCE_URLS` | contrôles réglementaires |
 
 `ENGAGEMENT_ACTOR_INPUT` contient l'entrée JSON de l'acteur ; `{platform}` et
@@ -84,7 +86,35 @@ psql -f db/postgres/002_seed_reference.sql
 psql -f db/postgres/smoke_test.sql   # vérifie puis annule tout
 ```
 
+Sur une base créée avant la synchronisation, appliquer ensuite la migration :
+
+```bash
+psql -f db/postgres/004_sync.sql
+```
+
 Le seeder Baserow s'exécute à part : voir [`db/README.md`](db/README.md).
+
+## Synchronisation PostgreSQL → Baserow
+
+Le lot 1 pousse les fiches créateur et acheteur, ainsi que la table de
+référence des plateformes, de PostgreSQL vers Baserow. Il crée ou met à jour la
+ligne correspondante, ne renvoie jamais une fiche inchangée et n'écrase aucun
+champ saisi par un humain.
+
+```bash
+python -m workflows.sync_push --limit 50
+python -m workflows.sync_push --help
+```
+
+La commande traite une passe puis s'arrête : elle peut être appelée par une
+tâche planifiée. `BASEROW_ROW_TOKEN` doit être un jeton de base durable, pas le
+JWT de structure qui expire au bout d'une heure. Les trois identifiants de
+tables évitent d'interroger la structure Baserow à chaque passe ; on les lit
+dans l'URL `https://…/database/{id}/table/{id}/`.
+
+La file est alimentée automatiquement par la base : une fiche créée ou modifiée
+dépose un changement en attente, et un seul changement reste en attente par
+fiche. Les actions humaines Baserow → PostgreSQL ne sont pas encore branchées.
 
 ## Tests
 
@@ -112,7 +142,7 @@ GTM_TEST_DATABASE_URL=postgresql://user:pass@host/gtm pytest tests/test_postgres
 |---|---|
 | `workflows/` | orchestration : plan, recherche, collecte, run hebdomadaire |
 | `processing/` | règles pures : preuves, enrichissement, engagement, score, éligibilité |
-| `integrations/` | clients externes : Exa, SerpApi, Apify, Telegram, Baserow, PostgreSQL |
+| `integrations/` | clients externes : Exa, SerpApi, Apify, Telegram, Baserow, PostgreSQL, file de synchronisation |
 | `ai/` | contrat du fournisseur de modèle, prompts et schémas |
 | `db/` | schéma PostgreSQL et seeder Baserow |
 | `docs/` | cadrage, modèle de données, contrats et procédures |

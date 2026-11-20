@@ -16,6 +16,7 @@ Dernière revue : 2026-11-20.
 | Échantillon d'engagement | prêt, acteur fourni par l'opérateur | `integrations/engagement_collectors.py`, `workflows/engagement_step.py` |
 | Score déterministe 1.4 | prêt, testé | `processing/scoring.py` |
 | Fiches, mesures, scores, décisions en PostgreSQL | prêt, testé avec une connexion simulée et contre le conteneur PostgreSQL | `integrations/record_store.py`, `integrations/postgres.py` |
+| Synchronisation PostgreSQL → Baserow (fiches, plateformes) | lot 1 prêt, testé hors ligne et contre le conteneur PostgreSQL | `workflows/sync_push.py`, `processing/baserow_mapping.py` |
 | Conteneur PostgreSQL local | fourni et validé : schéma 1.4, smoke test, tests d'intégration | `db/postgres/container.sh` |
 | Contrôle d'éligibilité | logique prête et branchée au run ; les contrôles eux-mêmes restent une procédure humaine | `processing/eligibility.py`, `workflows/eligibility_step.py` |
 | Commande de run | disponible | `python -m main` |
@@ -30,8 +31,10 @@ Dernière revue : 2026-11-20.
 - **Éligibilité** : le run applique la table de décision et écrit le verdict,
   mais il ne réalise aucun contrôle. La liste des vérifications est fournie par
   le fichier `--verification`, produit par la procédure humaine.
-- **Synchronisation Baserow ↔ PostgreSQL** : les tables `sync_outbox` et
-  `baserow_event` existent, le service de synchronisation n'est pas écrit.
+- **Synchronisation Baserow ↔ PostgreSQL** : la sortie PostgreSQL → Baserow
+  est écrite pour les fiches et les plateformes. L'entrée Baserow →
+  PostgreSQL (actions humaines, preuves, contacts, publicités) reste à écrire.
+  `baserow_event` existe mais n'est pas encore consommé.
 - **Calibration** : les seuils Rutube et YouTube sont provisoires ; le cas
   VK Video Live seul reste en engagement inconnu.
 
@@ -83,6 +86,12 @@ Sur une base déjà préparée :
 
 ```bash
 GTM_TEST_DATABASE_URL=postgresql://user:pass@host/gtm pytest tests/test_postgres_live.py
+```
+
+Pour vérifier la synchronisation sortante sans attendre une tâche planifiée :
+
+```bash
+python -m workflows.sync_push --limit 50
 ```
 
 La CI exécute `up`, `check` et `test` dans le job `postgres`.

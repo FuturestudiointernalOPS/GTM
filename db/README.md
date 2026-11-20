@@ -21,7 +21,7 @@ Le serveur ne fournit pas le plugin `docker compose` : le script n'utilise que
 ./db/postgres/container.sh check   # rejoue smoke_test.sql puis ROLLBACK
 ./db/postgres/container.sh test    # tests d'intégration PostgreSQL
 ./db/postgres/container.sh psql    # session interactive
-./db/postgres/container.sh migrate # applique 003 à une base existante
+./db/postgres/container.sh migrate # applique 003 et 004 à une base existante
 ./db/postgres/container.sh down    # retire le conteneur, garde les données
 ./db/postgres/container.sh reset --yes  # retire aussi le volume
 ```
@@ -94,6 +94,16 @@ psql -f db/postgres/003_engagement.sql
 
 Elle ajoute les champs d'engagement, l'échantillon et le résultat de mesure, puis
 met à jour la vue de contrat. Elle est idempotente.
+
+Sur une base créée avant la synchronisation, appliquer aussi :
+
+```bash
+psql -f db/postgres/004_sync.sql
+```
+
+Elle ajoute la location des éléments de la file, garantit un seul changement en
+attente par fiche et installe les déclencheurs qui alimentent la file. Elle est
+idempotente : la rejouer ne recrée rien.
 
 `smoke_test.sql` insère un créateur, un acheteur, un profil, une source, des
 faits, une transition de statut et un opt-out, puis termine par `ROLLBACK`. Il
@@ -267,11 +277,58 @@ Sans cette variable, ces tests sont ignorés : la suite ordinaire reste hors
 réseau. Le script `smoke_test.sql` se termine par `ROLLBACK`, il ne laisse rien
 en base.
 
-## Brancher la synchronisation
+## Synchronisation PostgreSQL → Baserow (lot 1)
 
-Les tables `sync_outbox` et `baserow_event` existent, mais aucune écriture ne les
-alimente encore : le service de synchronisation reste à écrire. Ne pas créer de
-vues Baserow qui supposeraient des champs non synchronisés sans le signaler.
+La sortie est branchée. Une fiche créée ou modifiée dépose automatiquement un
+changement en attente ; un seul changement reste en attente par fiche. Le
+service :
+
+1. pousse d'abord la table de référence `Plateformes` ;
+2. loue quelques changements en attente ;
+3. relit la fiche courante, ne garde que les champs `owner=pg` et résout le
+   lien vers la plateforme principale ;
+4. crée ou met à jour la ligne Baserow, retient son identifiant et son
+   empreinte ;
+5. marque le changement traité, ou conserve l'erreur et le nombre d'essais.
+
+Un champ `owner=baserow` n'est jamais envoyé. Une fiche inchangée n'est jamais
+renvoyée. Baserow affiche `sync_status`, `sync_error` et `last_synced_at` sur
+les fiches.
+
+### Configuration
+
+Ajouter au `.env` :
+
+```dotenv
+BASEROW_ROW_TOKEN=...        # jeton de base durable, pas le JWT de structure
+BASEROW_ROW_AUTH_SCHEME=Token
+BASEROW_TABLE_CREATORS=...
+BASEROW_TABLE_BUYERS=...
+BASEROW_TABLE_PLATFORMS=...
+```
+
+Les identifiants de tables se lisent dans l'URL Baserow
+`https://…/database/{id}/table/{id}/`. Le jeton de structure expire au bout
+d'une heure ; il ne convient pas au service. Sans les trois identifiants, le
+service tente de découvrir les tables, ce qui suppose un jeton autorisé à lire
+la structure.
+
+### Lancer
+
+```bash
+.venv/bin/python -m workflows.sync_push --limit 50
+.venv/bin/python -m workflows.sync_push --help
+```
+
+La commande traite une passe et s'arrête. Elle peut être appelée par une tâche
+planifiée. En cas d'échec, `sync_outbox.attempts` et `last_error` gardent la
+trace ; après le nombre d'essais maximal, `next_attempt_at` passe à `NULL` et
+l'élément attend une intervention. Pour le rejouer, remettre `attempts = 0` et
+`next_attempt_at = now()`.
+
+La synchronisation inverse (actions humaines Baserow → PostgreSQL) n'est pas
+encore écrite. Ne pas créer de vues Baserow qui supposeraient des champs non
+synchronisés sans le signaler.
 
 ## Erreurs fréquentes
 
@@ -288,6 +345,8 @@ vues Baserow qui supposeraient des champs non synchronisés sans le signaler.
 
 1. Exécuter le seeder sur l'instance Baserow réelle, puis créer les vues et
    régler les permissions.
-2. Brancher `sync_outbox` et `baserow_event` sur le service de synchronisation.
-3. Ajouter une politique de sauvegarde et de restauration PostgreSQL.
-4. Trancher l'attribution partielle (C-02/B-01) avant de figer les scores.
+2. Renseigner le jeton de lignes et les identifiants de tables, appliquer
+   `004_sync.sql`, puis lancer une passe de synchronisation.
+3. Brancher `baserow_event` sur les actions humaines Baserow → PostgreSQL.
+4. Ajouter une politique de sauvegarde et de restauration PostgreSQL.
+5. Trancher l'attribution partielle (C-02/B-01) avant de figer les scores.
