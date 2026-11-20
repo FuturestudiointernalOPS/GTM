@@ -12,6 +12,7 @@ block every other writer.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
 CLAIM_OUTBOX = """
@@ -76,6 +77,63 @@ DO UPDATE SET
     sync_hash = EXCLUDED.sync_hash
 """
 
+# --- incoming events ------------------------------------------------------
+
+STORE_EVENT = """
+INSERT INTO baserow_event (
+    external_event_id, table_id, row_id, event_type, payload
+) VALUES (%s, %s, %s, %s, %s::jsonb)
+ON CONFLICT (external_event_id) DO NOTHING
+RETURNING id, status
+"""
+
+SELECT_EVENT = """
+SELECT id, status FROM baserow_event
+WHERE external_event_id = %s
+FOR UPDATE
+"""
+
+MARK_EVENT = """
+UPDATE baserow_event
+SET status = %s, processed_at = now(), error = %s
+WHERE id = %s
+"""
+
+NOTE_EVENT_ERROR = "UPDATE baserow_event SET error = %s WHERE id = %s"
+
+LOAD_RECORD_FOR_ACTION = """
+SELECT kind::text, workflow_status::text, criteria_version, score
+FROM record
+WHERE id = %s
+FOR UPDATE
+"""
+
+INSERT_REVIEW_REQUEST = """
+INSERT INTO review_request (
+    record_id, action, note, requested_by, external_event_id
+) VALUES (%s::uuid, %s::review_action, %s, %s, %s)
+ON CONFLICT (external_event_id)
+DO UPDATE SET note = EXCLUDED.note
+RETURNING id
+"""
+
+FINISH_REVIEW_REQUEST = """
+UPDATE review_request
+SET processed_at = now(), resulting_event_id = %s
+WHERE id = %s
+"""
+
+SELECT_WORKFLOW_EVENT = """
+SELECT id FROM workflow_event WHERE external_event_id = %s
+"""
+
+TRANSITION_FOR_REVIEW = """
+SELECT transition_record(
+    %s::uuid, %s::workflow_status, %s, %s, 'WORKFLOW'::decision_type,
+    %s, %s, %s::jsonb
+)
+"""
+
 
 @dataclass(frozen=True)
 class OutboxItem:
@@ -90,6 +148,12 @@ class OutboxItem:
 class Link:
     row_id: int
     sync_hash: str | None
+
+
+@dataclass(frozen=True)
+class EventState:
+    id: str
+    status: str
 
 
 def claim_outbox(connection, *, limit: int, lease_seconds: int) -> list[OutboxItem]:
@@ -140,11 +204,7 @@ def load_fiche(connection, entity_type: str, entity_id: str) -> dict | None:
 
     with connection.cursor() as cursor:
         cursor.execute(statement, (entity_id,))
-        row = cursor.fetchone()
-        if row is None:
-            return None
-        columns = [column[0] for column in cursor.description]
-        return dict(zip(columns, row))
+        return _one_dict(cursor)
 
 
 def load_platforms(connection) -> list[dict]:
@@ -179,3 +239,118 @@ def save_link(
             SAVE_LINK,
             (entity_type, entity_id, table_id, row_id, sync_hash),
         )
+
+
+def store_event(
+    connection,
+    *,
+    external_event_id: str,
+    table_id: int,
+    row_id: int,
+    event_type: str,
+    payload: dict,
+) -> "EventState":
+    """Insert an incoming event, or return the state of the one already known."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            STORE_EVENT,
+            (
+                external_event_id,
+                table_id,
+                row_id,
+                event_type,
+                json.dumps(payload, ensure_ascii=False, default=str),
+            ),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            cursor.execute(SELECT_EVENT, (external_event_id,))
+            row = cursor.fetchone()
+
+    if row is None:  # pragma: no cover - the unique key guarantees a row
+        raise RuntimeError(f"baserow event {external_event_id} disappeared")
+    return EventState(id=str(row[0]), status=str(row[1]))
+
+
+def mark_event(
+    connection, event_id: str, status: str, error: str | None = None
+) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(MARK_EVENT, (status, error, event_id))
+
+
+def note_event_error(connection, event_id: str, error: str) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(NOTE_EVENT_ERROR, (error, event_id))
+
+
+def load_record_for_action(connection, record_id: str) -> dict | None:
+    with connection.cursor() as cursor:
+        cursor.execute(LOAD_RECORD_FOR_ACTION, (record_id,))
+        return _one_dict(cursor)
+
+
+def insert_review_request(
+    connection,
+    *,
+    record_id: str,
+    action: str,
+    note: str | None,
+    requested_by: str,
+    external_event_id: str,
+) -> str:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            INSERT_REVIEW_REQUEST,
+            (record_id, action, note, requested_by, external_event_id),
+        )
+        return str(cursor.fetchone()[0])
+
+
+def finish_review_request(
+    connection, request_id: str, workflow_event_id: str | None
+) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(FINISH_REVIEW_REQUEST, (workflow_event_id, request_id))
+
+
+def find_workflow_event(connection, external_event_id: str) -> str | None:
+    with connection.cursor() as cursor:
+        cursor.execute(SELECT_WORKFLOW_EVENT, (external_event_id,))
+        row = cursor.fetchone()
+    return None if row is None else str(row[0])
+
+
+def transition_for_review(
+    connection,
+    *,
+    record_id: str,
+    target: str,
+    justification: str,
+    actor: str,
+    criteria_version: str,
+    external_event_id: str,
+    payload: dict,
+) -> str:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            TRANSITION_FOR_REVIEW,
+            (
+                record_id,
+                target,
+                justification,
+                actor,
+                criteria_version,
+                external_event_id,
+                json.dumps(payload, ensure_ascii=False, default=str),
+            ),
+        )
+        return str(cursor.fetchone()[0])
+
+
+def _one_dict(cursor) -> dict | None:
+    row = cursor.fetchone()
+    if row is None:
+        return None
+    columns = [column[0] for column in cursor.description]
+    return dict(zip(columns, row))

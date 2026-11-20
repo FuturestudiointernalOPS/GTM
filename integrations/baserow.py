@@ -151,9 +151,44 @@ class BaserowClient:
     ) -> list[dict]:
         """Return one page of rows, addressed by field name.
 
-        Baserow caps the page size; callers that need every row ask for the
-        next page, or use ``find_row`` when one row is enough.
+        Baserow caps the page size; use ``iter_rows`` when every row is
+        needed, or ``find_row`` when one row is enough.
         """
+        params = self._row_params(size=size, page=page, filters=filters)
+        return _as_list(
+            self._request_with_retry(
+                "GET", f"/database/rows/table/{table_id}/", params=params
+            )
+        )
+
+    def iter_rows(
+        self,
+        table_id: int,
+        *,
+        size: int = 200,
+        filters: dict[str, object] | None = None,
+        max_pages: int = 50,
+    ):
+        """Yield every row, one Baserow page at a time.
+
+        ``max_pages`` is a safety cap: a service must not loop forever because
+        a server keeps answering with a next-page link.
+        """
+        page = 1
+        while page <= max(1, max_pages):
+            payload = self._request_with_retry(
+                "GET",
+                f"/database/rows/table/{table_id}/",
+                params=self._row_params(size=size, page=page, filters=filters),
+            )
+            for row in _as_list(payload):
+                yield row
+            if not isinstance(payload, dict) or not payload.get("next"):
+                break
+            page += 1
+
+    @staticmethod
+    def _row_params(*, size: int, page: int, filters: dict[str, object] | None):
         params: dict[str, object] = {
             "user_field_names": "true",
             "size": size,
@@ -162,11 +197,7 @@ class BaserowClient:
         if filters:
             for name, value in filters.items():
                 params[f"filter__{name}__equal"] = value
-        return _as_list(
-            self._request_with_retry(
-                "GET", f"/database/rows/table/{table_id}/", params=params
-            )
-        )
+        return params
 
     def find_row(self, table_id: int, field: str, value: object) -> dict | None:
         """Return the first row whose field equals ``value``, or ``None``."""
