@@ -194,6 +194,41 @@ VALUES (%s, %s, 'UNVERIFIED'::confidence_level, %s)
 ON CONFLICT (ad_id, creator_record_id) DO NOTHING
 """
 
+LOAD_ADS_FOR_MATCHING = """
+SELECT id, reference, advertiser_raw, inn, ogrn, inn_valid, ogrn_valid,
+       validation_status::text
+FROM ad
+WHERE validation_status IN ('DRAFT', 'SUBMITTED')
+  AND (buyer_record_id IS NULL OR match_status = 'AUTO_MATCHED')
+ORDER BY collected_at, id
+LIMIT %s
+"""
+
+FIND_BUYER_BY_INN = """
+SELECT record_id FROM buyer WHERE inn = %s LIMIT 2
+"""
+
+FIND_BUYER_BY_OGRN = """
+SELECT record_id FROM buyer WHERE ogrn = %s LIMIT 2
+"""
+
+UPDATE_AD_MATCH = """
+UPDATE ad
+SET buyer_record_id = %s,
+    match_status = %s::ad_match_status,
+    validation_status = %s::ad_validation_status,
+    updated_at = now()
+WHERE id = %s
+"""
+
+ATTACH_BUYER_IDENTIFIERS = """
+UPDATE buyer
+SET inn = COALESCE(%s, inn),
+    ogrn = COALESCE(%s, ogrn),
+    updated_at = now()
+WHERE record_id = %s
+"""
+
 # --- evidence -------------------------------------------------------------
 
 UPSERT_SOURCE = """
@@ -381,7 +416,7 @@ def save_link(
     entity_id: str,
     table_id: int,
     row_id: int,
-    sync_hash: str,
+    sync_hash: str | None,
 ) -> None:
     with connection.cursor() as cursor:
         cursor.execute(
@@ -575,6 +610,51 @@ def upsert_ad(
 def link_ad_creator(connection, *, ad_id: str, creator_id: str, note: str) -> None:
     with connection.cursor() as cursor:
         cursor.execute(LINK_AD_CREATOR, (ad_id, creator_id, note))
+
+
+def load_ads_for_matching(connection, *, limit: int) -> list[dict]:
+    with connection.cursor() as cursor:
+        cursor.execute(LOAD_ADS_FOR_MATCHING, (limit,))
+        columns = [column[0] for column in cursor.description]
+        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+
+def find_buyers_by_inn(connection, inn: str) -> list[str]:
+    with connection.cursor() as cursor:
+        cursor.execute(FIND_BUYER_BY_INN, (inn,))
+        return [str(row[0]) for row in cursor.fetchall()]
+
+
+def find_buyers_by_ogrn(connection, ogrn: str) -> list[str]:
+    with connection.cursor() as cursor:
+        cursor.execute(FIND_BUYER_BY_OGRN, (ogrn,))
+        return [str(row[0]) for row in cursor.fetchall()]
+
+
+def update_ad_match(
+    connection,
+    *,
+    ad_id: str,
+    buyer_record_id: str | None,
+    match_status: str,
+    validation_status: str,
+) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            UPDATE_AD_MATCH,
+            (buyer_record_id, match_status, validation_status, ad_id),
+        )
+
+
+def attach_buyer_identifiers(
+    connection,
+    *,
+    record_id: str,
+    inn: str | None,
+    ogrn: str | None,
+) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(ATTACH_BUYER_IDENTIFIERS, (inn, ogrn, record_id))
 
 
 def upsert_source(

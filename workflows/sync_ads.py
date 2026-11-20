@@ -227,6 +227,14 @@ def _apply_ad(
         raw_payload=row,
         validation_status=validation_status,
     )
+    sync_store.save_link(
+        connection,
+        entity_type="AD",
+        entity_id=ad_id,
+        table_id=tables.ads,
+        row_id=row_id,
+        sync_hash=None,
+    )
     for creator_id in creator_ids:
         sync_store.link_ad_creator(
             connection,
