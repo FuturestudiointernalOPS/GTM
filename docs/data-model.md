@@ -580,6 +580,8 @@ erDiagram
   `value_json`, jamais plusieurs à la fois.
 - Il porte `proof_level` (`OBSERVED`, `DECLARED`, `INFERRED`), `confidence`
   (`VERIFIED`, `PARTIAL`, `UNVERIFIED`) et un `source_snapshot_id` obligatoire.
+- Un fait importé depuis Baserow porte aussi `external_event_id`, l'identité
+  stable de la preuve : un rejeu ne crée pas un deuxième fait.
 - Une correction insère un nouveau fait avec `supersedes_id`. L'ancien passe à
   `is_current = false`. Le trigger vérifie que la supersession vise le même
   sujet et la même clef.
@@ -712,7 +714,14 @@ Les contacts sont repris par `workflows/sync_contacts.py` : un contact non
 professionnel et non public est refusé (K-01), et un `OPT_OUT` insère
 immédiatement un `contact_event` que le déclencheur transforme en statut
 `OPT_OUT` pour la fiche et tous ses contacts. Une fiche déjà `OPT_OUT` force
-tout contact entrant à `OPT_OUT`. Les preuves et publicités restent à brancher.
+tout contact entrant à `OPT_OUT`.
+
+Les preuves acceptées sont importées par `workflows/sync_evidence.py` : la
+source et sa consultation datée sont écrites d'abord, puis le fait typé est
+inséré avec une identité stable (`005_evidence.sql`). Une preuve `PENDING`,
+`REJECTED` ou `CONFLICT` n'entre pas dans le score. Une preuve déjà importée ne
+peut pas changer de valeur : la correction est une nouvelle preuve. Les
+publicités restent à brancher.
 
 ### 6.4 Conflits
 
@@ -821,11 +830,14 @@ Champs facultatifs couverts : `agency`, `revenue_band`, `competitors`,
 | `db/postgres/002_seed_reference.sql` | critères 1.4 actifs, 1.3 et 1.2 conservés en historique, et référentiel plateformes daté |
 | `db/postgres/003_engagement.sql` | migration 1.3 vers 1.4 : champs, échantillon, résultat de mesure, vue |
 | `db/postgres/004_sync.sql` | migration de synchronisation : location, index d'unicité, déclencheurs |
+| `db/postgres/005_evidence.sql` | identité stable d'un fait importé depuis une preuve |
 | `processing/baserow_mapping.py` | traduction pure d'une fiche PostgreSQL vers les champs Baserow |
 | `processing/review_actions.py` | règles pures des actions de revue Baserow → PostgreSQL |
+| `processing/fact_values.py` | typage et contrôle d'une valeur de preuve |
 | `workflows/sync_push.py` | service de sortie PostgreSQL → Baserow et sa commande |
 | `workflows/sync_pull.py` | service d'entrée Baserow → PostgreSQL et sa commande |
 | `workflows/sync_contacts.py` | service d'entrée des contacts et de l'opt-out immédiat |
+| `workflows/sync_evidence.py` | service d'entrée des preuves acceptées |
 | `db/postgres/smoke_test.sql` | test manuel qui insère, vérifie les vues et annule tout |
 | `tests/test_baserow_schema.py` | contrôles hors ligne du schéma Baserow |
 | `tests/test_baserow_apply.py` | tests du seeder avec une API Baserow simulée |

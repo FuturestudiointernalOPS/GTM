@@ -21,7 +21,7 @@ Le serveur ne fournit pas le plugin `docker compose` : le script n'utilise que
 ./db/postgres/container.sh check   # rejoue smoke_test.sql puis ROLLBACK
 ./db/postgres/container.sh test    # tests d'intégration PostgreSQL
 ./db/postgres/container.sh psql    # session interactive
-./db/postgres/container.sh migrate # applique 003 et 004 à une base existante
+./db/postgres/container.sh migrate # applique 003, 004 et 005 à une base existante
 ./db/postgres/container.sh down    # retire le conteneur, garde les données
 ./db/postgres/container.sh reset --yes  # retire aussi le volume
 ```
@@ -99,11 +99,13 @@ Sur une base créée avant la synchronisation, appliquer aussi :
 
 ```bash
 psql -f db/postgres/004_sync.sql
+psql -f db/postgres/005_evidence.sql
 ```
 
-Elle ajoute la location des éléments de la file, garantit un seul changement en
-attente par fiche et installe les déclencheurs qui alimentent la file. Elle est
-idempotente : la rejouer ne recrée rien.
+`004` ajoute la location des éléments de la file, garantit un seul changement en
+attente par fiche et installe les déclencheurs qui alimentent la file. `005`
+ajoute l'identité stable d'une preuve sur un fait, pour qu'un rejeu ne crée pas
+un deuxième fait. Les deux migrations sont idempotentes.
 
 `smoke_test.sql` insère un créateur, un acheteur, un profil, une source, des
 faits, une transition de statut et un opt-out, puis termine par `ROLLBACK`. Il
@@ -306,6 +308,7 @@ BASEROW_TABLE_CREATORS=...
 BASEROW_TABLE_BUYERS=...
 BASEROW_TABLE_PLATFORMS=...
 BASEROW_TABLE_CONTACTS=...
+BASEROW_TABLE_PROOFS=...
 ```
 
 Les identifiants de tables se lisent dans l'URL Baserow
@@ -378,7 +381,32 @@ Le service des contacts lit la table `Contacts`, résout le lien vers la fiche
 .venv/bin/python -m workflows.sync_contacts --help
 ```
 
-Les preuves et publicités ne sont pas encore reprises par ce service.
+## Synchronisation Baserow → PostgreSQL — preuves (lot 3b)
+
+Le service des preuves lit la table `Preuves`. Une preuve n'entre dans le score
+que si un humain l'a marquée `ACCEPTED` ; `PENDING`, `REJECTED` et `CONFLICT`
+restent dans Baserow pour la revue.
+
+Pour une preuve acceptée, le service :
+
+1. résout la fiche liée via `baserow_link` ;
+2. contrôle la clef, la valeur, le niveau de preuve, la confiance, la source et
+   la date de consultation ;
+3. crée ou retrouve la source et sa consultation datée, puis les rattache à la
+   fiche ;
+4. insère le fait typé avec une identité stable de preuve.
+
+Une valeur mal formée est refusée, pas convertie en zéro : `followers = many`
+n'est pas un fait. Une preuve déjà importée ne peut pas changer de valeur : la
+correction est une nouvelle preuve. Le rejeu de la même ligne ne crée pas un
+deuxième fait.
+
+```bash
+.venv/bin/python -m workflows.sync_evidence
+.venv/bin/python -m workflows.sync_evidence --help
+```
+
+Les publicités ne sont pas encore reprises par ce service.
 
 ## Erreurs fréquentes
 
@@ -397,7 +425,7 @@ Les preuves et publicités ne sont pas encore reprises par ce service.
    régler les permissions.
 2. Renseigner le jeton de lignes et les identifiants de tables, appliquer
    `004_sync.sql`, puis lancer une passe de synchronisation.
-3. Brancher les `Preuves` et `Publicites_etiquetees` sur la synchronisation
-   Baserow → PostgreSQL.
+3. Brancher les `Publicites_etiquetees` sur la synchronisation Baserow →
+   PostgreSQL.
 4. Ajouter une politique de sauvegarde et de restauration PostgreSQL.
 5. Trancher l'attribution partielle (C-02/B-01) avant de figer les scores.
