@@ -94,15 +94,16 @@ Sur une base déjà préparée :
 GTM_TEST_DATABASE_URL=postgresql://user:pass@host/gtm pytest tests/test_postgres_live.py
 ```
 
-Pour vérifier les deux sens sans attendre une tâche planifiée :
+Pour vérifier les deux sens sans attendre une tâche planifiée, avec
+l'interpréteur du projet :
 
 ```bash
-python -m workflows.sync_push --limit 50
-python -m workflows.sync_pull
-python -m workflows.sync_contacts
-python -m workflows.sync_evidence
-python -m workflows.sync_ads
-python -m workflows.match_ads
+.venv/bin/python -m workflows.sync_push --limit 50
+.venv/bin/python -m workflows.sync_pull
+.venv/bin/python -m workflows.sync_contacts
+.venv/bin/python -m workflows.sync_evidence
+.venv/bin/python -m workflows.sync_ads
+.venv/bin/python -m workflows.match_ads
 ```
 
 La CI exécute `up`, `check` et `test` dans le job `postgres`.

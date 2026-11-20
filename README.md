@@ -101,19 +101,27 @@ référence des plateformes, de PostgreSQL vers Baserow. Il crée ou met à jour
 ligne correspondante, ne renvoie jamais une fiche inchangée et n'écrase aucun
 champ saisi par un humain.
 
+Toujours utiliser l'interpréteur du projet, sinon `python-dotenv` manque :
+
 ```bash
+source .venv/bin/activate
 python -m workflows.sync_push --limit 50
 python -m workflows.sync_pull
 python -m workflows.sync_contacts
 python -m workflows.sync_evidence
 python -m workflows.sync_ads
 python -m workflows.match_ads
-python -m workflows.sync_push --help
-python -m workflows.sync_pull --help
-python -m workflows.sync_contacts --help
-python -m workflows.sync_evidence --help
-python -m workflows.sync_ads --help
-python -m workflows.match_ads --help
+```
+
+Ou, sans activer l'environnement :
+
+```bash
+.venv/bin/python -m workflows.sync_push --limit 50
+.venv/bin/python -m workflows.sync_pull
+.venv/bin/python -m workflows.sync_contacts
+.venv/bin/python -m workflows.sync_evidence
+.venv/bin/python -m workflows.sync_ads
+.venv/bin/python -m workflows.match_ads
 ```
 
 Chaque commande traite une passe puis s'arrête : elle peut être appelée par une

@@ -2,7 +2,13 @@
 
 import os
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError as error:  # pragma: no cover - depends on the interpreter
+    raise RuntimeError(
+        "python-dotenv is missing: run the project with .venv/bin/python "
+        "(or activate .venv first) and install requirements-dev.txt"
+    ) from error
 
 load_dotenv()
 
