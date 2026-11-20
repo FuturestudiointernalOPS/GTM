@@ -27,20 +27,22 @@ One server (`vmi3726974`), one shared Linux account (`hunter`). Every team membe
 ```
 /home/hunter/
 ├── .ssh/authorized_keys     SSH public keys allowed to log in
-├── GTMTool/                 clone of the GTM repo (github.com:FuturestudiointernalOPS/GTM)
-│   ├── .venv/               project virtual environment (Python 3.12.3)
-│   └── .env                 secrets: model, search, database (chmod 600) - never in Git
+├── GTMTool/
+│   └── GTM/                 clone of the GTM repo (HTTPS), on main
+│       ├── .venv/           project virtual environment (Python 3.12.3)
+│       └── .env             secrets: DeepSeek, Telegram (chmod 600) - never in Git
 ├── backups/                 encrypted backups (*.tar.gz.age)
 ├── .hermes/                 Hermes Agent
 │   ├── config.yaml          settings (model, Docker sandbox, checkpoints)
-│   ├── .env                 secrets (DeepSeek API key) - never in Git
+│   ├── .env                 secrets (DeepSeek API key, Telegram bot token) - never in Git
 │   ├── hermes-agent/        program files
 │   ├── proxy/               iron-proxy: proxy.yaml, ca.crt, mappings.json
 │   └── logs/                agent.log, errors.log, egress-boot.log
+├── .config/systemd/user/    hermes-gateway.service (enabled, starts at boot)
 └── (crontab)                @reboot: starts iron-proxy after boot
 ```
 
-`~/.ssh/gtm_deploy` (read-only deploy key for the GitHub repo) is planned, not created yet.
+The repository is public on GitHub (checked 2026-11-19), so the server clones it over HTTPS without any key. The read-only deploy key `~/.ssh/gtm_deploy` is only needed if the repository becomes private again.
 
 **Docker images:** `nousresearch/hermes-sandbox:desktop` (4.4 GB on disk, 1.2 GB download), `hello-world`.
 
@@ -209,7 +211,7 @@ python3 -m venv .venv
 source .venv/bin/activate                  # prompt shows (.venv)
 ```
 
-Re-activate in every new session: `cd ~/GTMTool && source .venv/bin/activate`. `.venv` is never committed; libraries go in `requirements.txt`.
+Re-activate in every new session: `cd ~/GTMTool/GTM && source .venv/bin/activate` (the repo clone; the first `.venv` in `~/GTMTool` was replaced by it). `.venv` is never committed; libraries go in `requirements.txt`.
 
 ### 4.13 Hermes Agent
 
@@ -305,7 +307,7 @@ python test_deepseek.py        # "Yes, I'm working and ready to help." - 93 toke
 
 DeepSeek is OpenAI-compatible: the `openai` library is used with `base_url="https://api.deepseek.com/v1"` and `model="deepseek-v4-flash"`. Switching provider later means changing the base URL and model name, which the `AIProvider` layer will isolate. The test script will become `ai/deepseek.py`.
 
-Common mistake: a new SSH session starts in `~`, not `~/GTMTool`. Always `cd ~/GTMTool && source .venv/bin/activate` first (prompt shows `(.venv)`).
+Common mistake: a new SSH session starts in `~`, not `~/GTMTool`. Always `cd ~/GTMTool/GTM && source .venv/bin/activate` first (prompt shows `(.venv)`).
 
 ### 4.19 Encrypted backup and restore test
 
@@ -378,7 +380,7 @@ Notes:
 - `dev` is merged into `main`; all `intern1/*` branches are merged too, except one obsolete `requirements.txt` commit.
 - A GitHub Action (`.github/workflows/ci.yml`) runs `ruff check`, `ruff format --check` and `pytest` on every push to `main`/`dev` and on every pull request.
 - **Code is written on laptops, never on the server.** Each person works on a branch and opens a pull request; another intern reviews before merging into `main`.
-- The server only pulls validated code (`git pull`), through a read-only deploy key (to be added by a repo admin in Settings, Deploy keys).
+- The server only pulls validated code: `cd ~/GTMTool/GTM && git checkout main && git pull --ff-only`. The repository is public, so no key is needed; if it becomes private, a repo admin adds the read-only deploy key (Settings, Deploy keys).
 - Branch names: `intern1/<task>` (for example `intern1/ai-layer`, `intern1/config`, `intern1/docs-infra`). One task per branch, created from an up-to-date `main` (`git checkout main && git pull`). A branch that depends on another unmerged branch is created from it, and its pull request uses that branch as base.
 
 ## 4c. AI layer (code, on laptops)
@@ -445,7 +447,34 @@ python -m tests.manual_check_telegram    # one real message
 python -m pytest -q                      # the offline test suite
 ```
 
-Deliberately **not** in this step: reading replies, buttons, approvals, gateway as a service. That is the Hermes side and it stays on the Next steps list.
+Deliberately **not** in this step: reading replies, buttons, approvals. That is the Hermes side (section 4d-bis).
+
+## 4d-bis. Telegram on the Hermes side (gateway)
+
+Done on 2026-11-19. The same bot serves both sides: Python only **sends**, Hermes is the only one that **reads** (polling). Two readers on one bot would steal each other's updates, so nothing in Python ever polls.
+
+| Item | Value |
+|---|---|
+| Telegram account | Future Studio (company phone number), two-step verification on, password in Bitwarden |
+| Bot | `@proveitgo_hunt_bot`, created with @BotFather, token in Bitwarden |
+| Groups | `/setjoingroups` → Disable: nobody can add the bot to a group |
+| Recipient | the Future Studio account (decision with Henry; Henry can be set later) |
+| Allowed users | only the Future Studio account's Id (from @userinfobot) |
+| Home channel | the same Id (set in `hermes gateway setup`, replaces `/sethome`) |
+| Service | `hermes-gateway.service`, **user** service of hunter, enabled; linger keeps it running at boot |
+
+Setup, once (on the server):
+
+```bash
+hermes gateway setup                     # Telegram → Manual → token → allowed Id → home channel
+systemctl --user enable hermes-gateway   # start at boot
+systemctl --user restart hermes-gateway  # reload the config
+journalctl --user -u hermes-gateway -n 50 --no-pager | grep -i telegram   # "Connected to Telegram (polling mode)"
+```
+
+Why not `sudo hermes gateway install --system`: a user service already existed. A system service would be a second gateway polling the same bot. `sudo hermes` also fails: `hermes` lives in `~/.local/bin`, outside sudo's PATH.
+
+To change the recipient later: `TELEGRAM_CHAT_ID` in `~/GTMTool/GTM/.env`, then `hermes gateway setup` again for the allowed Id and the home channel, then restart the service.
 
 ## 4e. Web search (Exa, SerpApi + Apify)
 
@@ -590,7 +619,10 @@ Rules the wrapper enforces:
 | Unknown provider | `AI_PROVIDER=inconnu PYTHONPATH=. python tests/manual_check_ai.py` | `ValueError: Unknown AI_PROVIDER: 'inconnu'` | ✓ |
 | Telegram code (offline) | `python -m pytest -q` | all tests pass, no network | ✓ |
 | Telegram unconfigured | `python -m tests.manual_check_telegram` with an empty `.env` | clear message naming the two settings, exit 1 | ✓ |
-| Telegram real send | `python -m tests.manual_check_telegram` with the real token | `Sent, message id: N` | pending, needs the bot token |
+| Telegram real send | `python -m tests.manual_check_telegram` with the real token, on the laptop and on the server | `Sent, message id: N` | ✓ |
+| Telegram allowed user | message the bot from the Future Studio account | Hermes answers | ✓ |
+| Telegram refusal | message the bot from another account | no answer | ✓ |
+| Gateway after reboot | `sudo reboot`, then `systemctl --user is-active hermes-gateway` and a message to the bot | `active`, Hermes answers, iron-proxy running | ✓ |
 | Search layer (offline) | `python -m pytest -q` | Exa, SerpApi, Apify and both hunt paths pass, no network | ✓ |
 | Pipeline (offline) | `python -m pytest -q` | dedup, reading and evidence ledger pass, no network | ✓ |
 | Telegram directory (offline) | `python -m pytest -q` | paid Actor mocked; input, cost ceiling, cursor and normalization tested | ✓ |
@@ -636,9 +668,14 @@ After a reinstall, SSH warns `REMOTE HOST IDENTIFICATION HAS CHANGED`. Clear the
 | `proxy.enabled is true but iron-proxy is not configured` | Egress firewall enabled in the wizard, proxy never set up | `hermes egress setup` then `hermes egress start` |
 | Sandbox start timeout | 1.2 GB image pulled on first use | `docker pull nousresearch/hermes-sandbox:desktop` |
 | Proxy down after reboot | No autostart in `hermes egress` | `@reboot` line in hunter's crontab |
-| `ModuleNotFoundError: dotenv` | Script run from `~` without the venv | `cd ~/GTMTool && source .venv/bin/activate` |
+| `ModuleNotFoundError: dotenv` | Script run from `~` without the venv | `cd ~/GTMTool/GTM && source .venv/bin/activate` |
 | `scp`/`ssh` alias not found | Command typed on the server | Run laptop commands in a laptop terminal (`aichath@`) |
 | Snapshot refused | Plan allows one snapshot | Delete the old snapshot, then create the new one |
+| `hermes: command not found` | Command typed on the laptop | `ssh proveitgo-hunter` first; Hermes only exists on the server |
+| `sudo: hermes: command not found` | `hermes` is in `~/.local/bin`, outside sudo's PATH | Not needed: use the user service (`systemctl --user`) |
+| Gateway running but "No messaging platforms enabled" | Gateway started before Telegram was configured; restart refused in the wizard | `systemctl --user restart hermes-gateway` |
+| `.env.save` next to `.env` | nano emergency save; not covered by `.gitignore` | Deleted; check with `git status` after editing `.env` |
+| `.env` readable by the group | `chmod 600` skipped | `chmod 600 ~/GTMTool/GTM/.env` |
 
 ## 9. Next steps
 
@@ -649,8 +686,11 @@ After a reinstall, SSH warns `REMOTE HOST IDENTIFICATION HAS CHANGED`. Clear the
 - [x] Dangerous commands denied in scheduled runs
 - [x] Abel's SSH key
 - [ ] SSH key of the third intern
-- [ ] Read-only deploy key on GitHub, then clone the repo into `~/GTMTool` (move `.env`, recreate `.venv`)
-- [ ] Telegram: Future Studio account (company phone number), bot, access limited to Henry, gateway as a service, reboot test
+- [x] Repo cloned on the server in `~/GTMTool/GTM`, on `main`, with its `.venv` and `.env` (public repo, no deploy key needed for now)
+- [ ] Henry: confirm whether the repository should stay public
+- [x] Telegram: Future Studio account, bot, access limited to that account, gateway as a service, reboot test
+- [ ] Monday technical check: Hermes cron → Python → DeepSeek → Telegram (5 minutes ahead, then `0 6 * * 1`)
+- [ ] Backup script: the project `.env` moved to `GTMTool/GTM/.env` (section 4.19 still lists `GTMTool/.env`)
 - [ ] Decisions from Henry: DeepSeek instead of OpenRouter/Kimi, secrets sharing, off-site backup storage
 - [x] AI layer and central settings (pull requests `intern1/ai-layer` and `intern1/config`, waiting for review)
 - [x] `requirements.txt` (runtime) and `requirements-dev.txt` (tests, lint), pinned and checked against Python 3.12
