@@ -122,6 +122,10 @@ def _apply_ad(
     label: str,
     report: AdsReport,
 ) -> None:
+    if _is_placeholder(row):
+        report.skipped.append(label)
+        return
+
     validation_status = clean_text(row.get("validation_status")).upper()
     if validation_status not in EDITABLE:
         status = "SYNCED" if validation_status == IMPORTED else "REJECTED"
@@ -302,6 +306,16 @@ def _resolve_creators(
         else:
             resolved.append(link[1])
     return resolved, unresolved
+
+
+def _is_placeholder(row: dict) -> bool:
+    """A default Baserow row has no advertiser, URL or collection status."""
+    return (
+        not clean_text(row.get("advertiser_raw"))
+        and not clean_text(row.get("ad_url"))
+        and not clean_text(row.get("validation_status"))
+        and not clean_text(row.get("extraction_status"))
+    )
 
 
 def _validate(

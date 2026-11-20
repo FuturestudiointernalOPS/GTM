@@ -178,6 +178,35 @@ class FakeRowClient:
         return None
 
 
+def test_a_default_empty_row_is_skipped_without_writing_an_error():
+    connection = FakeConnection()
+    client = FakeRowClient(
+        {
+            CONTACTS: [
+                contact_row(
+                    channel_value="",
+                    record_type=None,
+                    creator=[],
+                    acheteur=[],
+                )
+            ]
+        }
+    )
+
+    report = sync_contacts.pull_contacts(
+        connection,
+        client,
+        creators=CREATORS,
+        buyers=BUYERS,
+        platforms=PLATFORMS,
+        contacts=CONTACTS,
+    )
+
+    assert report.ok
+    assert report.skipped == ["CONTACT:21"]
+    assert client.updated == []
+
+
 def test_a_professional_contact_is_stored_and_acknowledged():
     connection = FakeConnection()
     client = FakeRowClient({CONTACTS: [contact_row()]})

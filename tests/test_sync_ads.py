@@ -182,6 +182,36 @@ class FakeRowClient:
         return {"id": row_id}
 
 
+def test_a_default_empty_row_is_skipped_without_writing_an_error():
+    connection = FakeConnection()
+    client = FakeRowClient(
+        {
+            ADS: [
+                ad_row(
+                    advertiser_raw="",
+                    ad_url="",
+                    validation_status=None,
+                    extraction_status=None,
+                )
+            ]
+        }
+    )
+
+    report = sync_ads.pull_ads(
+        connection,
+        client,
+        creators=CREATORS,
+        buyers=BUYERS,
+        platforms=PLATFORMS,
+        ads=ADS,
+    )
+
+    assert report.ok
+    assert report.skipped == ["AD:41"]
+    assert connection.ads == {}
+    assert client.updated == []
+
+
 def test_an_editable_ad_is_imported_with_its_ids_and_links():
     connection = FakeConnection()
     client = FakeRowClient({ADS: [ad_row()]})

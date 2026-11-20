@@ -123,6 +123,10 @@ def _apply_contact(
     label: str,
     report: ContactReport,
 ) -> None:
+    if _is_placeholder(row):
+        report.skipped.append(label)
+        return
+
     record_id, problem = _resolve_record(connection, tables, row)
     if problem:
         _reject(connection, client, tables, row_id, label, problem, report)
@@ -207,6 +211,16 @@ def _resolve_record(
     connection, tables: BaserowTables, row: dict
 ) -> tuple[str, str | None]:
     return resolve_record_link(connection, tables, row)
+
+
+def _is_placeholder(row: dict) -> bool:
+    """A default Baserow row has no value and no linked fiche."""
+    return (
+        not _text(row.get("channel_value"))
+        and not _text(row.get("record_type"))
+        and not link_ids(row.get("creator"))
+        and not link_ids(row.get("acheteur"))
+    )
 
 
 def _validate(

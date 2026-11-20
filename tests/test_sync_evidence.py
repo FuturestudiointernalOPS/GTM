@@ -234,6 +234,37 @@ class FakeRowClient:
         return {"id": row_id}
 
 
+def test_a_default_empty_row_is_skipped_without_writing_an_error():
+    connection = FakeConnection()
+    client = FakeRowClient(
+        {
+            PROOFS: [
+                proof_row(
+                    fact_key="",
+                    value=None,
+                    record_type=None,
+                    creator=[],
+                    acheteur=[],
+                )
+            ]
+        }
+    )
+
+    report = sync_evidence.pull_evidence(
+        connection,
+        client,
+        creators=CREATORS,
+        buyers=BUYERS,
+        platforms=PLATFORMS,
+        proofs=PROOFS,
+    )
+
+    assert report.ok
+    assert report.skipped == ["PROOF:31"]
+    assert connection.facts == {}
+    assert client.updated == []
+
+
 def test_an_accepted_proof_creates_a_sourced_fact():
     connection = FakeConnection()
     client = FakeRowClient({PROOFS: [proof_row()]})

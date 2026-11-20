@@ -31,6 +31,7 @@ from workflows.sync_common import (
     SyncError,
     clean_text,
     error_fields,
+    link_ids,
     resolve_record_link,
     success_fields,
 )
@@ -117,6 +118,10 @@ def _apply_proof(
     label: str,
     report: EvidenceReport,
 ) -> None:
+    if _is_placeholder(row):
+        report.skipped.append(label)
+        return
+
     record_id, problem = resolve_record_link(connection, tables, row)
     if problem:
         _reject(connection, client, tables.proofs, row_id, label, problem, report)
@@ -357,6 +362,17 @@ def _reject(
             log.warning("could not show the refusal on %s: %s", label, error)
     report.rejected.append((label, message))
     log.warning("%s refused: %s", label, message)
+
+
+def _is_placeholder(row: dict) -> bool:
+    """A default Baserow row has no key, value or linked fiche."""
+    return (
+        not clean_text(row.get("fact_key"))
+        and not clean_text(row.get("value"))
+        and not clean_text(row.get("record_type"))
+        and not link_ids(row.get("creator"))
+        and not link_ids(row.get("acheteur"))
+    )
 
 
 def _same_fact(
