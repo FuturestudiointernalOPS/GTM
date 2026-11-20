@@ -10,7 +10,70 @@ Ce dossier contient le schéma des fiches créateur et acheteur, en deux couches
 Le raisonnement complet est dans `docs/data-model.md`. Les règles métier
 proviennent de `docs/scope.md` et `docs/verification.md`.
 
-## PostgreSQL
+## Conteneur Docker (développement et validation)
+
+Le serveur ne fournit pas le plugin `docker compose` : le script n'utilise que
+`docker`.
+
+```bash
+./db/postgres/container.sh up      # crée le conteneur, attend, applique 001 + 002
+./db/postgres/container.sh status
+./db/postgres/container.sh check   # rejoue smoke_test.sql puis ROLLBACK
+./db/postgres/container.sh test    # tests d'intégration PostgreSQL
+./db/postgres/container.sh psql    # session interactive
+./db/postgres/container.sh migrate # applique 003 à une base existante
+./db/postgres/container.sh down    # retire le conteneur, garde les données
+./db/postgres/container.sh reset --yes  # retire aussi le volume
+```
+
+- le premier `up` sans `POSTGRES_PASSWORD` génère un mot de passe dans
+  `db/postgres/container.env` (mode 600, ignoré par Git) plutôt que de
+  l'afficher ;
+- le conteneur écoute uniquement sur `127.0.0.1:5432` et redémarre avec Docker
+  (`unless-stopped`) ;
+- l'image est épinglée par digest (`postgres:17-alpine@sha256:526f...`). Pour la
+  mettre à jour : changer `POSTGRES_IMAGE` ou le défaut du script, puis
+  `reset --yes`, `up`, `check` et `test` ;
+- le schéma n'est appliqué que si `public.record` manque. Une base plus ancienne
+  se migre avec `migrate` ;
+- `down` garde le volume, `reset` le supprime. Une modification du mot de passe
+  exige `reset --yes` puis `up`.
+
+Réglages reconnus (environnement, puis `db/postgres/container.env`, puis `.env`
+de la racine) :
+
+| Réglage | Défaut | Rôle |
+|---|---|---|
+| `POSTGRES_DB` | `gtm` | nom de la base |
+| `POSTGRES_USER` | `gtm` | rôle applicatif |
+| `POSTGRES_PASSWORD` | généré | mot de passe ; garder des caractères compatibles URL (`@`, `/`, `:` à éviter) |
+| `POSTGRES_PORT` | `5432` | port publié sur `127.0.0.1` |
+| `POSTGRES_IMAGE` | digest épinglé | image utilisée |
+| `POSTGRES_CONTAINER` | `gtm-postgres` | nom du conteneur |
+| `POSTGRES_VOLUME` | `gtm-postgres-data` | volume des données |
+
+Une valeur par ligne, sans commentaire en fin de ligne.
+
+Reporter l'URL dans le `.env` de l'application, avec le mot de passe lu dans
+`db/postgres/container.env` :
+
+```dotenv
+DATABASE_URL=postgresql://gtm:<mot_de_passe>@127.0.0.1:5432/gtm
+```
+
+Sauvegarde et restauration :
+
+```bash
+docker exec gtm-postgres pg_dump -U gtm -d gtm -Fc > backups/gtm-$(date +%F).dump
+docker exec -i gtm-postgres pg_restore -U gtm -d gtm --clean --if-exists < backups/gtm-XXXX.dump
+```
+
+Les sauvegardes restent à la charge de l'exploitation : le volume Docker n'est
+pas une politique de sauvegarde.
+
+## PostgreSQL sans Docker
+
+Si aucun conteneur n'est utilisé :
 
 ```bash
 psql -f db/postgres/001_schema.sql

@@ -4,7 +4,7 @@ Ce document donne une vue d'ensemble ; il ne remplace aucune règle. En cas de
 doute, `docs/scope.md` fait foi pour les critères, `docs/verification.md` pour
 les procédures, et `docs/data-model.md` pour les champs.
 
-Dernière revue : 2026-11-17.
+Dernière revue : 2026-11-20.
 
 ## 1. Ce qui est exécutable
 
@@ -15,7 +15,8 @@ Dernière revue : 2026-11-17.
 | Preuves et citations verbatim | prêt, testé hors ligne | `processing/evidence.py`, `workflows/record_loop.py` |
 | Échantillon d'engagement | prêt, acteur fourni par l'opérateur | `integrations/engagement_collectors.py`, `workflows/engagement_step.py` |
 | Score déterministe 1.4 | prêt, testé | `processing/scoring.py` |
-| Fiches, mesures, scores, décisions en PostgreSQL | prêt, testé avec une connexion simulée | `integrations/record_store.py`, `integrations/postgres.py` |
+| Fiches, mesures, scores, décisions en PostgreSQL | prêt, testé avec une connexion simulée et contre le conteneur PostgreSQL | `integrations/record_store.py`, `integrations/postgres.py` |
+| Conteneur PostgreSQL local | fourni et validé : schéma 1.4, smoke test, tests d'intégration | `db/postgres/container.sh` |
 | Contrôle d'éligibilité | logique prête et branchée au run ; les contrôles eux-mêmes restent une procédure humaine | `processing/eligibility.py`, `workflows/eligibility_step.py` |
 | Commande de run | disponible | `python -m main` |
 | Seeder Baserow | prêt, `--dry-run` disponible | `db/baserow/apply_schema.py` |
@@ -41,9 +42,6 @@ Dernière revue : 2026-11-17.
 - Génération et envoi du démarchage : le prompt et le fournisseur existent, le
   parcours d'envoi n'est pas branché.
 - Journal de coûts et alertes : non implémentés.
-- Exécution continue des tests d'intégration : absente. Les tests existent
-  (`tests/test_postgres_live.py`) mais restent facultatifs, car ils exigent une
-  base réelle (`GTM_TEST_DATABASE_URL`) et ne sont pas lancés par la CI.
 
 ## 4. Décisions ouvertes
 
@@ -72,8 +70,19 @@ pytest
 pytest --cov
 ```
 
-Les tests hors ligne ne touchent aucun service. Pour la base réelle :
+Les tests hors ligne ne touchent aucun service. Pour la base réelle, le
+conteneur fournit la base et lance les tests :
+
+```bash
+./db/postgres/container.sh up
+./db/postgres/container.sh check
+./db/postgres/container.sh test
+```
+
+Sur une base déjà préparée :
 
 ```bash
 GTM_TEST_DATABASE_URL=postgresql://user:pass@host/gtm pytest tests/test_postgres_live.py
 ```
+
+La CI exécute `up`, `check` et `test` dans le job `postgres`.

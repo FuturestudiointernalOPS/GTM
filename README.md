@@ -64,6 +64,20 @@ vérification absente n'est jamais un accord. Le format est décrit dans
 
 ## Base de données
 
+Le plus simple, avec Docker (aucun plugin Compose requis) :
+
+```bash
+./db/postgres/container.sh up      # crée le conteneur et applique le schéma
+./db/postgres/container.sh check   # rejoue le smoke test SQL
+./db/postgres/container.sh test    # tests d'intégration réels
+```
+
+Le mot de passe local est généré dans `db/postgres/container.env` (ignoré par
+Git) ; reporter l'URL dans `DATABASE_URL`. Détails, sauvegarde et mise à jour de
+l'image : [`db/README.md`](db/README.md).
+
+Sans Docker, appliquer le schéma à la main :
+
 ```bash
 psql -f db/postgres/001_schema.sql
 psql -f db/postgres/002_seed_reference.sql
@@ -80,8 +94,13 @@ ruff check . && ruff format --check .    # lint et format
 pytest --cov                             # couverture du code de production
 ```
 
-Les tests d'intégration PostgreSQL sont ignorés par défaut. Pour les activer sur
-une base où le schéma est déjà appliqué :
+Les tests d'intégration PostgreSQL sont ignorés par défaut. Avec le conteneur :
+
+```bash
+./db/postgres/container.sh test
+```
+
+Sur une base où le schéma est déjà appliqué :
 
 ```bash
 GTM_TEST_DATABASE_URL=postgresql://user:pass@host/gtm pytest tests/test_postgres_live.py
