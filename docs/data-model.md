@@ -720,8 +720,14 @@ Les preuves acceptées sont importées par `workflows/sync_evidence.py` : la
 source et sa consultation datée sont écrites d'abord, puis le fait typé est
 inséré avec une identité stable (`005_evidence.sql`). Une preuve `PENDING`,
 `REJECTED` ou `CONFLICT` n'entre pas dans le score. Une preuve déjà importée ne
-peut pas changer de valeur : la correction est une nouvelle preuve. Les
-publicités restent à brancher.
+peut pas changer de valeur : la correction est une nouvelle preuve.
+
+Les publicités brutes sont importées par `workflows/sync_ads.py` tant qu'elles
+sont `DRAFT` ou `SUBMITTED`. Le service contrôle les champs obligatoires,
+calcule les chiffres INN/OGRN (`processing/russian_ids.py`), résout le support
+plateforme et les liens créateur, puis insère la publicité. Une publicité déjà
+`IMPORTED` n'est jamais réécrite : une correction est une nouvelle ligne. Le
+lien acheteur reste vide et appartient au rapprochement INN/OGRN.
 
 ### 6.4 Conflits
 
@@ -834,10 +840,12 @@ Champs facultatifs couverts : `agency`, `revenue_band`, `competitors`,
 | `processing/baserow_mapping.py` | traduction pure d'une fiche PostgreSQL vers les champs Baserow |
 | `processing/review_actions.py` | règles pures des actions de revue Baserow → PostgreSQL |
 | `processing/fact_values.py` | typage et contrôle d'une valeur de preuve |
+| `processing/russian_ids.py` | contrôle des chiffres INN et OGRN |
 | `workflows/sync_push.py` | service de sortie PostgreSQL → Baserow et sa commande |
 | `workflows/sync_pull.py` | service d'entrée Baserow → PostgreSQL et sa commande |
 | `workflows/sync_contacts.py` | service d'entrée des contacts et de l'opt-out immédiat |
 | `workflows/sync_evidence.py` | service d'entrée des preuves acceptées |
+| `workflows/sync_ads.py` | service d'entrée des publicités étiquetées |
 | `db/postgres/smoke_test.sql` | test manuel qui insère, vérifie les vues et annule tout |
 | `tests/test_baserow_schema.py` | contrôles hors ligne du schéma Baserow |
 | `tests/test_baserow_apply.py` | tests du seeder avec une API Baserow simulée |

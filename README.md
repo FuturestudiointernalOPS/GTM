@@ -35,7 +35,7 @@ au minimum :
 | `APIFY_API_KEY`, `ENGAGEMENT_ACTOR_ID` | échantillon d'engagement (facultatif : sans acteur, les créateurs partent en revue) |
 | `DATABASE_URL` | PostgreSQL (obligatoire hors `--dry-run`) |
 | `BASEROW_ROW_TOKEN` | jeton durable de lecture/écriture des lignes Baserow (synchronisation) |
-| `BASEROW_TABLE_CREATORS`, `BASEROW_TABLE_BUYERS`, `BASEROW_TABLE_PLATFORMS`, `BASEROW_TABLE_CONTACTS`, `BASEROW_TABLE_PROOFS` | identifiants des tables Baserow utilisées par la synchronisation |
+| `BASEROW_TABLE_CREATORS`, `BASEROW_TABLE_BUYERS`, `BASEROW_TABLE_PLATFORMS`, `BASEROW_TABLE_CONTACTS`, `BASEROW_TABLE_PROOFS`, `BASEROW_TABLE_ADS` | identifiants des tables Baserow utilisées par la synchronisation |
 | `RKN_SEARCH_URL`, `SANCTIONS_LIST_URLS`, `BETTING_LICENCE_URLS` | contrôles réglementaires |
 
 `ENGAGEMENT_ACTOR_INPUT` contient l'entrée JSON de l'acteur ; `{platform}` et
@@ -106,10 +106,12 @@ python -m workflows.sync_push --limit 50
 python -m workflows.sync_pull
 python -m workflows.sync_contacts
 python -m workflows.sync_evidence
+python -m workflows.sync_ads
 python -m workflows.sync_push --help
 python -m workflows.sync_pull --help
 python -m workflows.sync_contacts --help
 python -m workflows.sync_evidence --help
+python -m workflows.sync_ads --help
 ```
 
 Chaque commande traite une passe puis s'arrête : elle peut être appelée par une
@@ -125,7 +127,10 @@ demande et le journal, puis acquitte la ligne Baserow. Les contacts sont
 également repris : un contact non public est refusé (K-01) et un `OPT_OUT`
 bloque immédiatement la fiche. Les preuves marquées `ACCEPTED` deviennent des
 faits sourcés et datés ; une preuve en attente ou refusée n'entre pas dans le
-score. Les publicités ne sont pas encore reprises.
+score. Les publicités étiquetées en `DRAFT` ou `SUBMITTED` sont importées avec
+leurs identifiants INN/OGRN contrôlés et leurs liens créateur ; une publicité
+déjà `IMPORTED` n'est plus modifiée. Le rapprochement automatique de
+l'annonceur vers une fiche acheteur reste à brancher.
 
 ## Tests
 

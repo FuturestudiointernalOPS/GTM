@@ -309,6 +309,7 @@ BASEROW_TABLE_BUYERS=...
 BASEROW_TABLE_PLATFORMS=...
 BASEROW_TABLE_CONTACTS=...
 BASEROW_TABLE_PROOFS=...
+BASEROW_TABLE_ADS=...
 ```
 
 Les identifiants de tables se lisent dans l'URL Baserow
@@ -406,7 +407,28 @@ deuxième fait.
 .venv/bin/python -m workflows.sync_evidence --help
 ```
 
-Les publicités ne sont pas encore reprises par ce service.
+## Synchronisation Baserow → PostgreSQL — publicités (lot 3c)
+
+Le service des publicités lit la table `Publicites_etiquetees`. Il importe les
+lignes `DRAFT` et `SUBMITTED` ; une ligne `IMPORTED` n'est plus modifiée, et
+une ligne `REJECTED` n'est pas importée.
+
+Il contrôle le nom d'annonceur, l'URL, la date et l'auteur de collecte, le
+statut d'extraction et la présence de la mention. Il calcule ensuite les
+chiffres de contrôle INN et OGRN, résout le support publicitaire via la table
+`Plateformes`, puis insère la publicité et ses liens créateur.
+
+- Une publicité dont une fiche créateur liée n'est pas encore synchronisée est
+  stockée, mais marquée en erreur ; une passe ultérieure ajoute le lien.
+- Une publicité déjà `IMPORTED` ne peut pas être réécrite : une correction est
+  une nouvelle ligne.
+- Le lien acheteur est laissé vide : il appartient au rapprochement
+  INN/OGRN, pas à la saisie Baserow.
+
+```bash
+.venv/bin/python -m workflows.sync_ads
+.venv/bin/python -m workflows.sync_ads --help
+```
 
 ## Erreurs fréquentes
 
@@ -425,7 +447,7 @@ Les publicités ne sont pas encore reprises par ce service.
    régler les permissions.
 2. Renseigner le jeton de lignes et les identifiants de tables, appliquer
    `004_sync.sql`, puis lancer une passe de synchronisation.
-3. Brancher les `Publicites_etiquetees` sur la synchronisation Baserow →
-   PostgreSQL.
+3. Rapprocher les publicités des acheteurs par INN/OGRN, puis écrire
+   `buyer_record_id` et `match_status`, et passer les lignes en `IMPORTED`.
 4. Ajouter une politique de sauvegarde et de restauration PostgreSQL.
 5. Trancher l'attribution partielle (C-02/B-01) avant de figer les scores.
