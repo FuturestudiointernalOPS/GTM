@@ -2,7 +2,7 @@
 
 Why a dedicated client: the same tables and fields must be created the same way
 on every environment, and a schema error must stop with a readable message. This
-module only handles the schema (tables and fields), never row data.
+module only handles the schema (tables, fields and views), never row data.
 
 The token is never logged and never included in an error message.
 """
@@ -136,6 +136,54 @@ class BaserowClient:
         return self._request_with_retry(
             "PATCH",
             f"/database/fields/{field_id}/",
+            json=payload,
+        )
+
+    # -- views -------------------------------------------------------------
+
+    def list_views(self, table_id: int, *, include: str | None = None) -> list[dict]:
+        """Return every view of a table, optionally with filters included.
+
+        Pass ``include="filters"`` to receive each view's filters in the same
+        answer, which avoids one request per view.
+        """
+        params = {"include": include} if include else None
+        return _as_list(
+            self._request_with_retry(
+                "GET", f"/database/views/table/{table_id}/", params=params
+            )
+        )
+
+    def create_view(
+        self,
+        table_id: int,
+        name: str,
+        view_type: str = "grid",
+        filter_type: str | None = None,
+    ) -> dict:
+        """Create one view and return Baserow's description of it.
+
+        No automatic retry: a lost response after a successful creation would
+        create a duplicate view. Rerun the idempotent seeder instead.
+        """
+        payload: dict = {"name": name, "type": view_type}
+        if filter_type:
+            payload["filter_type"] = filter_type
+        return self._request(
+            "POST",
+            f"/database/views/table/{table_id}/",
+            json=payload,
+        )
+
+    def create_view_filter(self, view_id: int, payload: dict) -> dict:
+        """Add one filter to a view.
+
+        No automatic retry, for the same reason as ``create_view``. The seeder
+        compares existing filters before adding a missing one.
+        """
+        return self._request(
+            "POST",
+            f"/database/views/{view_id}/filters/",
             json=payload,
         )
 

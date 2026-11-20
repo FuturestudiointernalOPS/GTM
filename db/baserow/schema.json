@@ -1,6 +1,6 @@
 {
-  "version": "1.0",
-  "generated_at": "2026-11-16",
+  "version": "1.1",
+  "generated_at": "2026-11-20",
   "description": "Schéma Baserow des fiches créateur et acheteur. Baserow est l'interface de travail ; PostgreSQL reste la source de vérité des identifiants, faits, scores, éligibilités et historiques (voir docs/data-model.md).",
   "source_of_truth": {
     "pg": "PostgreSQL écrit, Baserow affiche en lecture seule.",
@@ -11,6 +11,7 @@
     "Le champ required est un contrat du projet : Baserow n'impose pas lui-même la nullité au niveau du champ. Les formulaires et le service de synchronisation le valident.",
     "La création des tables se fait en deux passes : toutes les tables, puis les champs link_row, lookup et count, pour résoudre les identifiants de tables.",
     "Aucune ligne n'est supprimée. Un doublon est relié par merged_into ; une fiche écartée garde son statut.",
+    "Les vues de la section views sont créées après les champs. Un filtre manquant est ajouté ; un filtre supplémentaire n'est jamais supprimé.",
     "Les champs owner=pg ne doivent pas être modifiés dans Baserow. Une correction de fait passe par une nouvelle preuve, jamais par une réécriture silencieuse."
   ],
   "tables": [
@@ -129,7 +130,7 @@
         },
         {
           "name": "updated_at",
-          "type": "last_modified_on",
+          "type": "last_modified",
           "required": false,
           "owner": "derived"
         }
@@ -799,7 +800,7 @@
         },
         {
           "name": "updated_at",
-          "type": "last_modified_on",
+          "type": "last_modified",
           "required": false,
           "owner": "derived"
         }
@@ -1352,7 +1353,7 @@
         },
         {
           "name": "updated_at",
-          "type": "last_modified_on",
+          "type": "last_modified",
           "required": false,
           "owner": "derived"
         }
@@ -1563,7 +1564,7 @@
         },
         {
           "name": "updated_at",
-          "type": "last_modified_on",
+          "type": "last_modified",
           "required": false,
           "owner": "derived"
         }
@@ -1741,7 +1742,7 @@
         },
         {
           "name": "updated_at",
-          "type": "last_modified_on",
+          "type": "last_modified",
           "required": false,
           "owner": "derived"
         }
@@ -1812,7 +1813,7 @@
         {
           "name": "label_complete",
           "type": "formula",
-          "formula": "and(field('ad_label_present'), not(is_empty(field('erid'))), or(field('inn_valid'), field('ogrn_valid')))",
+          "formula": "and(and(field('ad_label_present'), not(isblank(field('erid')))), or(field('inn_valid'), field('ogrn_valid')))",
           "required": false,
           "owner": "derived",
           "description": "Mention, identifiant d'annonceur valide et erid réunis (B-00)."
@@ -1961,7 +1962,7 @@
         },
         {
           "name": "updated_at",
-          "type": "last_modified_on",
+          "type": "last_modified",
           "required": false,
           "owner": "derived"
         }
@@ -2144,7 +2145,7 @@
         },
         {
           "name": "updated_at",
-          "type": "last_modified_on",
+          "type": "last_modified",
           "required": false,
           "owner": "derived"
         }
@@ -2282,6 +2283,177 @@
           "type": "created_on",
           "required": false,
           "owner": "derived"
+        }
+      ]
+    }
+  ],
+  "views": [
+    {
+      "name": "File de revue",
+      "table": "Createurs",
+      "type": "grid",
+      "filter_type": "AND",
+      "description": "Traiter les doutes : fiches en TO_REVIEW ou MANUAL_REVIEW.",
+      "filters": [
+        {
+          "field": "workflow_status",
+          "type": "single_select_is_any_of",
+          "value": "TO_REVIEW,MANUAL_REVIEW"
+        }
+      ]
+    },
+    {
+      "name": "Engagement à revoir",
+      "table": "Createurs",
+      "type": "grid",
+      "filter_type": "OR",
+      "description": "Traiter la mesure : statut UNKNOWN ou drapeau UNREADABLE / WEAK_SAMPLE.",
+      "filters": [
+        {
+          "field": "engagement_status",
+          "type": "single_select_equal",
+          "value": "UNKNOWN"
+        },
+        {
+          "field": "engagement_flag",
+          "type": "multiple_select_has",
+          "value": "UNREADABLE"
+        },
+        {
+          "field": "engagement_flag",
+          "type": "multiple_select_has",
+          "value": "WEAK_SAMPLE"
+        }
+      ]
+    },
+    {
+      "name": "Engagement à auditer",
+      "table": "Createurs",
+      "type": "grid",
+      "filter_type": "AND",
+      "description": "Auditer la dispersion, sans changer les points.",
+      "filters": [
+        {
+          "field": "engagement_flag",
+          "type": "multiple_select_has",
+          "value": "DISPERSION"
+        }
+      ]
+    },
+    {
+      "name": "Conformité",
+      "table": "Createurs",
+      "type": "grid",
+      "filter_type": "AND",
+      "description": "Décision humaine obligatoire sur les fiches en COMPLIANCE_REVIEW.",
+      "filters": [
+        {
+          "field": "workflow_status",
+          "type": "single_select_equal",
+          "value": "COMPLIANCE_REVIEW"
+        }
+      ]
+    },
+    {
+      "name": "À auditer",
+      "table": "Createurs",
+      "type": "grid",
+      "filter_type": "AND",
+      "description": "Audit ProveItGo des créateurs présélectionnés.",
+      "filters": [
+        {
+          "field": "workflow_status",
+          "type": "single_select_equal",
+          "value": "PRESELECTED"
+        }
+      ]
+    },
+    {
+      "name": "Vivier",
+      "table": "Createurs",
+      "type": "grid",
+      "filter_type": "AND",
+      "description": "Créateurs prêts : POOL, QUALIFIED ou APPROVED.",
+      "filters": [
+        {
+          "field": "workflow_status",
+          "type": "single_select_is_any_of",
+          "value": "POOL,QUALIFIED,APPROVED"
+        }
+      ]
+    },
+    {
+      "name": "À contacter",
+      "table": "Createurs",
+      "type": "grid",
+      "filter_type": "AND",
+      "description": "Prospection : fiches approuvées.",
+      "filters": [
+        {
+          "field": "workflow_status",
+          "type": "single_select_equal",
+          "value": "APPROVED"
+        }
+      ]
+    },
+    {
+      "name": "Publicités incomplètes",
+      "table": "Publicites_etiquetees",
+      "type": "grid",
+      "filter_type": "OR",
+      "description": "Qualité de collecte : extraction non COMPLETE ou étiquette incomplète.",
+      "filters": [
+        {
+          "field": "extraction_status",
+          "type": "single_select_not_equal",
+          "value": "COMPLETE"
+        },
+        {
+          "field": "label_complete",
+          "type": "boolean",
+          "value": "false"
+        }
+      ]
+    },
+    {
+      "name": "Preuves à relire",
+      "table": "Preuves",
+      "type": "grid",
+      "filter_type": "AND",
+      "description": "Revue des faits en attente.",
+      "filters": [
+        {
+          "field": "review_status",
+          "type": "single_select_equal",
+          "value": "PENDING"
+        }
+      ]
+    },
+    {
+      "name": "Contacts à vérifier",
+      "table": "Contacts",
+      "type": "grid",
+      "filter_type": "AND",
+      "description": "Contacts dont le rattachement reste à vérifier.",
+      "filters": [
+        {
+          "field": "verification_status",
+          "type": "single_select_equal",
+          "value": "PENDING"
+        }
+      ]
+    },
+    {
+      "name": "Erreurs de synchronisation",
+      "table": "Createurs",
+      "type": "grid",
+      "filter_type": "AND",
+      "description": "Exploitation : fiches rejetées ou en erreur de synchronisation.",
+      "filters": [
+        {
+          "field": "sync_status",
+          "type": "single_select_is_any_of",
+          "value": "REJECTED,ERROR"
         }
       ]
     }

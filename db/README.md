@@ -177,7 +177,8 @@ Le mode `--dry-run` lit les tables existantes et affiche :
 - les champs qui seraient créés ;
 - les champs primaires à renommer ;
 - les options de liste manquantes ;
-- les incohérences de type ou de lien.
+- les incohérences de type ou de lien ;
+- les vues et les filtres qui seraient créés.
 
 Aucune requête `POST` ou `PATCH` n'est envoyée.
 
@@ -187,17 +188,19 @@ Aucune requête `POST` ou `PATCH` n'est envoyée.
 .venv/bin/python -m db.baserow.apply_schema
 ```
 
-Le seeder procède en quatre passes :
+Le seeder procède en cinq passes :
 
 1. créer les tables manquantes ;
 2. renommer le champ primaire par défaut (`Name`) et créer les champs simples ;
 3. créer les champs de lien entre tables ;
 4. créer les champs calculés (`formula`), de recherche (`lookup`) et de
-   comptage (`count`).
+   comptage (`count`) ;
+5. créer les vues de travail et leurs filtres.
 
 Il est idempotent : une deuxième exécution ne recrée rien. Il ne supprime jamais
-une table, un champ ou une option. Si un champ existe avec un autre type, ou si
-un lien pointe ailleurs, il le signale et n'écrase pas.
+une table, un champ, une option ou un filtre. Si un champ existe avec un autre
+type, si un lien pointe ailleurs, ou si un filtre de vue diffère, il le signale
+et n'écrase pas.
 
 ### 6. Vérifier dans Baserow
 
@@ -207,13 +210,14 @@ Contrôler au minimum :
 - `Createurs.display_name` et `Acheteurs.legal_name` sont les champs primaires ;
 - `Createurs.main_platform` pointe vers `Plateformes` ;
 - `Publicites_etiquetees.label_complete` est bien un champ calculé ;
+- les onze vues du §7 existent avec leurs filtres ;
 - `Preuves` et `Decisions` sont en lecture seule pour les rôles qui ne doivent
   pas les modifier.
 
-### 7. Créer les vues et filtres
+### 7. Vérifier les vues et filtres
 
-Le seeder crée la structure, pas les vues de travail. Créer dans Baserow les
-vues décrites dans `docs/data-model.md` §4.5 :
+Le seeder crée aussi les onze vues de travail décrites dans
+`docs/data-model.md` §4.5, d'après la section `views` de `schema.json` :
 
 - File de revue ;
 - Engagement à revoir ;
@@ -226,6 +230,18 @@ vues décrites dans `docs/data-model.md` §4.5 :
 - Preuves à relire ;
 - Contacts à vérifier ;
 - Erreurs de synchronisation.
+
+Chaque vue est un tableau (`grid`) portant son propre `filter_type` (`AND` ou
+`OR`) et ses filtres. Les filtres désignent les champs par leur nom et les
+`single_select` par le libellé de l'option (`TO_REVIEW`, `POOL`…), pas par leur
+identifiant Baserow : le même `schema.json` s'applique donc à tous les
+environnements.
+
+La douzième ligne du §4.5 (`Doublons potentiels`) est un regroupement, pas un
+filtre : elle se configure à la main dans Baserow si elle est nécessaire.
+
+Relancer le seeder ne recrée pas une vue existante et n'ajoute que les filtres
+manquants. Il ne supprime jamais un filtre ajouté à la main.
 
 ### 8. Régler les permissions
 
