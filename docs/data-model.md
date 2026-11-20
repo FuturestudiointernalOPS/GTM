@@ -229,7 +229,7 @@ plateforme Telegram ou YouTube porte une date limite, pas un rejet silencieux.
 | `sync_error` | long_text | non | PG | erreur lisible |
 | `last_synced_at` | date_time | non | PG | dernière synchronisation |
 | `created_at` | created_on | non | D | création |
-| `updated_at` | last_modified_on | non | D | dernière modification |
+| `updated_at` | last_modified | non | D | dernière modification |
 
 ### 4.3 Fiche `Acheteurs`
 
@@ -336,7 +336,7 @@ vérification réussie.
 | `sync_error` | long_text | non | PG | erreur lisible |
 | `last_synced_at` | date_time | non | PG | dernière synchronisation |
 | `created_at` | created_on | non | D | création |
-| `updated_at` | last_modified_on | non | D | dernière modification |
+| `updated_at` | last_modified | non | D | dernière modification |
 
 ### 4.4 Tables de support
 

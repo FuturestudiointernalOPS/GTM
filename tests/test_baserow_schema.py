@@ -27,7 +27,7 @@ FIELD_TYPES = {
     "count",
     "formula",
     "created_on",
-    "last_modified_on",
+    "last_modified",
 }
 
 OWNERS = {"pg", "baserow", "derived"}
