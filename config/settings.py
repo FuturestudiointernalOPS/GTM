@@ -40,6 +40,23 @@ BASEROW_TOKEN = optional("BASEROW_TOKEN")
 BASEROW_DATABASE_ID = optional("BASEROW_DATABASE_ID")
 BASEROW_AUTH_SCHEME = optional("BASEROW_AUTH_SCHEME", "JWT")
 
+# Row access for the synchronization service. A schema JWT expires after an
+# hour; a background service needs a database token that does not. Keep both
+# credentials separate: the schema seeder stays on the JWT, the sync service
+# uses BASEROW_ROW_TOKEN. When the row token is empty, the client falls back to
+# BASEROW_TOKEN (useful for a short manual run, not for a long-lived worker).
+BASEROW_ROW_TOKEN = optional("BASEROW_ROW_TOKEN")
+BASEROW_ROW_AUTH_SCHEME = optional("BASEROW_ROW_AUTH_SCHEME", "Token")
+
+# Table ids used by the synchronization service. A database token can read and
+# write rows but may not list the schema, so the ids are configuration rather
+# than a discovery step. They are visible in the Baserow URL:
+# /database/{database_id}/table/{table_id}/. When all three are set, the sync
+# service never asks Baserow for the schema.
+BASEROW_TABLE_CREATORS = optional("BASEROW_TABLE_CREATORS")
+BASEROW_TABLE_BUYERS = optional("BASEROW_TABLE_BUYERS")
+BASEROW_TABLE_PLATFORMS = optional("BASEROW_TABLE_PLATFORMS")
+
 # PostgreSQL: the critical data (facts, scores, eligibility). Empty means "not
 # configured": the connection factory refuses with a clear message instead of
 # failing at the network level.

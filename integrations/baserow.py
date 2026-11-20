@@ -139,6 +139,63 @@ class BaserowClient:
             json=payload,
         )
 
+    # -- rows --------------------------------------------------------------
+
+    def list_rows(
+        self,
+        table_id: int,
+        *,
+        size: int = 200,
+        page: int = 1,
+        filters: dict[str, object] | None = None,
+    ) -> list[dict]:
+        """Return one page of rows, addressed by field name.
+
+        Baserow caps the page size; callers that need every row ask for the
+        next page, or use ``find_row`` when one row is enough.
+        """
+        params: dict[str, object] = {
+            "user_field_names": "true",
+            "size": size,
+            "page": page,
+        }
+        if filters:
+            for name, value in filters.items():
+                params[f"filter__{name}__equal"] = value
+        return _as_list(
+            self._request_with_retry(
+                "GET", f"/database/rows/table/{table_id}/", params=params
+            )
+        )
+
+    def find_row(self, table_id: int, field: str, value: object) -> dict | None:
+        """Return the first row whose field equals ``value``, or ``None``."""
+        rows = self.list_rows(table_id, size=1, filters={field: value})
+        return rows[0] if rows else None
+
+    def create_row(self, table_id: int, fields: dict) -> dict:
+        """Create one row and return Baserow's description of it.
+
+        No automatic retry: a lost response after a successful creation would
+        create a second row. The synchronization service resolves a row by its
+        business key before creating one, so a replay stays safe.
+        """
+        return self._request(
+            "POST",
+            f"/database/rows/table/{table_id}/",
+            params={"user_field_names": "true"},
+            json=fields,
+        )
+
+    def update_row(self, table_id: int, row_id: int, fields: dict) -> dict | None:
+        """Update one row, addressed by field name."""
+        return self._request_with_retry(
+            "PATCH",
+            f"/database/rows/table/{table_id}/{row_id}/",
+            params={"user_field_names": "true"},
+            json=fields,
+        )
+
     # -- transport ---------------------------------------------------------
 
     @retry(
@@ -179,6 +236,33 @@ class BaserowClient:
             return response.json()
         except ValueError as error:
             raise BaserowError("Baserow answered with unreadable content") from error
+
+
+class BaserowRowClient(BaserowClient):
+    """Client for row data, using the durable database token when it is set.
+
+    The schema endpoints need a short-lived JWT. A background synchronization
+    service cannot refresh one every hour, so it reads a database token from
+    its own setting. Keeping the two clients separate prevents a schema run
+    from silently using the wrong credential.
+    """
+
+    def __init__(
+        self,
+        base_url: str | None = None,
+        token: str | None = None,
+        auth_scheme: str | None = None,
+    ):
+        row_token = token or settings.BASEROW_ROW_TOKEN
+        if row_token:
+            token = row_token
+            if auth_scheme is None:
+                auth_scheme = settings.BASEROW_ROW_AUTH_SCHEME or "Token"
+        super().__init__(
+            base_url=base_url,
+            token=token,
+            auth_scheme=auth_scheme,
+        )
 
 
 def _description(response: httpx.Response) -> str:
