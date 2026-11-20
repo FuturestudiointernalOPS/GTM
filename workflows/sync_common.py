@@ -20,6 +20,7 @@ class BaserowTables:
     creators: int
     buyers: int
     platforms: int
+    contacts: int | None = None
 
     @classmethod
     def resolve(
@@ -30,6 +31,7 @@ class BaserowTables:
         creators=None,
         buyers=None,
         platforms=None,
+        contacts=None,
     ) -> "BaserowTables":
         """Use configured table ids, or discover them through the schema API."""
         if creators and buyers and platforms:
@@ -37,6 +39,7 @@ class BaserowTables:
                 creators=table_id("creators", creators),
                 buyers=table_id("buyers", buyers),
                 platforms=table_id("platforms", platforms),
+                contacts=table_id("contacts", contacts) if contacts else None,
             )
 
         if not database_id:
@@ -65,6 +68,7 @@ class BaserowTables:
             creators=by_name["Createurs"],
             buyers=by_name["Acheteurs"],
             platforms=by_name["Plateformes"],
+            contacts=by_name.get("Contacts"),
         )
 
 

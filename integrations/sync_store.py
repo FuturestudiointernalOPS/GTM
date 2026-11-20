@@ -134,6 +134,50 @@ SELECT transition_record(
 )
 """
 
+# --- contacts -------------------------------------------------------------
+
+RESOLVE_LINK = """
+SELECT entity_type, entity_id
+FROM baserow_link
+WHERE baserow_table_id = %s AND baserow_row_id = %s
+"""
+
+LOAD_RECORD_STATUS = """
+SELECT workflow_status::text
+FROM record
+WHERE id = %s
+FOR UPDATE
+"""
+
+UPSERT_CONTACT = """
+INSERT INTO contact (
+    record_id, role, person_name, channel_type, channel_value,
+    is_professional_public, source_url, source_date, status, notes
+) VALUES (
+    %s, %s, %s, %s::contact_channel, %s,
+    %s, %s, %s, %s::contact_status, %s
+)
+ON CONFLICT (record_id, channel_type, lower(channel_value))
+DO UPDATE SET
+    role = EXCLUDED.role,
+    person_name = EXCLUDED.person_name,
+    is_professional_public = EXCLUDED.is_professional_public,
+    source_url = EXCLUDED.source_url,
+    source_date = EXCLUDED.source_date,
+    status = EXCLUDED.status,
+    notes = EXCLUDED.notes,
+    updated_at = now()
+RETURNING id
+"""
+
+INSERT_OPT_OUT_EVENT = """
+INSERT INTO contact_event (
+    contact_id, record_id, event_type, actor, notes, external_event_id
+) VALUES (%s, %s, 'OPT_OUT', %s, %s, %s)
+ON CONFLICT (external_event_id) DO NOTHING
+RETURNING id
+"""
+
 
 @dataclass(frozen=True)
 class OutboxItem:
@@ -346,6 +390,73 @@ def transition_for_review(
             ),
         )
         return str(cursor.fetchone()[0])
+
+
+def resolve_link(connection, table_id: int, row_id: int) -> tuple[str, str] | None:
+    with connection.cursor() as cursor:
+        cursor.execute(RESOLVE_LINK, (table_id, row_id))
+        row = cursor.fetchone()
+    if row is None:
+        return None
+    return str(row[0]), str(row[1])
+
+
+def load_record_status(connection, record_id: str) -> str | None:
+    with connection.cursor() as cursor:
+        cursor.execute(LOAD_RECORD_STATUS, (record_id,))
+        row = cursor.fetchone()
+    return None if row is None else str(row[0])
+
+
+def upsert_contact(
+    connection,
+    *,
+    record_id: str,
+    role: str,
+    person_name: str | None,
+    channel_type: str,
+    channel_value: str,
+    is_professional_public: bool,
+    source_url: str,
+    source_date: str,
+    status: str,
+    notes: str | None,
+) -> str:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            UPSERT_CONTACT,
+            (
+                record_id,
+                role,
+                person_name,
+                channel_type,
+                channel_value,
+                is_professional_public,
+                source_url,
+                source_date,
+                status,
+                notes,
+            ),
+        )
+        return str(cursor.fetchone()[0])
+
+
+def insert_opt_out_event(
+    connection,
+    *,
+    contact_id: str,
+    record_id: str,
+    actor: str,
+    notes: str | None,
+    external_event_id: str,
+) -> str | None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            INSERT_OPT_OUT_EVENT,
+            (contact_id, record_id, actor, notes, external_event_id),
+        )
+        row = cursor.fetchone()
+    return None if row is None else str(row[0])
 
 
 def _one_dict(cursor) -> dict | None:
