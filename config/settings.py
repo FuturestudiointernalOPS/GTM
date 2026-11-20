@@ -58,6 +58,7 @@ BASEROW_TABLE_BUYERS = optional("BASEROW_TABLE_BUYERS")
 BASEROW_TABLE_PLATFORMS = optional("BASEROW_TABLE_PLATFORMS")
 BASEROW_TABLE_CONTACTS = optional("BASEROW_TABLE_CONTACTS")
 BASEROW_TABLE_PROOFS = optional("BASEROW_TABLE_PROOFS")
+BASEROW_TABLE_ADS = optional("BASEROW_TABLE_ADS")
 
 # PostgreSQL: the critical data (facts, scores, eligibility). Empty means "not
 # configured": the connection factory refuses with a clear message instead of

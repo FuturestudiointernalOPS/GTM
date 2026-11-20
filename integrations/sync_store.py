@@ -134,6 +134,66 @@ SELECT transition_record(
 )
 """
 
+# --- ads ------------------------------------------------------------------
+
+PLATFORM_NAME_FOR_ROW = """
+SELECT p.name
+FROM baserow_link bl
+JOIN platform p ON p.id = bl.entity_id
+WHERE bl.entity_type = 'PLATFORM'
+  AND bl.baserow_table_id = %s
+  AND bl.baserow_row_id = %s
+"""
+
+LOAD_AD_FOR_UPDATE = """
+SELECT id, reference, validation_status::text
+FROM ad
+WHERE normalized_ad_url = %s
+  AND coalesce(erid, creative_ref, '') = %s
+FOR UPDATE
+"""
+
+UPSERT_AD = """
+INSERT INTO ad (
+    reference, advertiser_raw, inn, ogrn, inn_valid, ogrn_valid, erid,
+    ad_label_present, extraction_status, ad_source, ad_url, normalized_ad_url,
+    creative_ref, creator_refs, collected_at, collected_by, raw_payload,
+    validation_status
+) VALUES (
+    %s, %s, %s, %s, %s, %s, %s,
+    %s, %s::extraction_status, %s, %s, %s,
+    %s, %s, %s, %s, %s::jsonb,
+    %s::ad_validation_status
+)
+ON CONFLICT (normalized_ad_url, coalesce(erid, creative_ref, ''))
+DO UPDATE SET
+    reference = COALESCE(ad.reference, EXCLUDED.reference),
+    advertiser_raw = EXCLUDED.advertiser_raw,
+    inn = EXCLUDED.inn,
+    ogrn = EXCLUDED.ogrn,
+    inn_valid = EXCLUDED.inn_valid,
+    ogrn_valid = EXCLUDED.ogrn_valid,
+    erid = EXCLUDED.erid,
+    ad_label_present = EXCLUDED.ad_label_present,
+    extraction_status = EXCLUDED.extraction_status,
+    ad_source = EXCLUDED.ad_source,
+    ad_url = EXCLUDED.ad_url,
+    creative_ref = EXCLUDED.creative_ref,
+    creator_refs = EXCLUDED.creator_refs,
+    collected_at = EXCLUDED.collected_at,
+    collected_by = EXCLUDED.collected_by,
+    raw_payload = EXCLUDED.raw_payload,
+    validation_status = EXCLUDED.validation_status,
+    updated_at = now()
+RETURNING id, reference
+"""
+
+LINK_AD_CREATOR = """
+INSERT INTO ad_creator (ad_id, creator_record_id, confidence, note)
+VALUES (%s, %s, 'UNVERIFIED'::confidence_level, %s)
+ON CONFLICT (ad_id, creator_record_id) DO NOTHING
+"""
+
 # --- evidence -------------------------------------------------------------
 
 UPSERT_SOURCE = """
@@ -444,6 +504,77 @@ def resolve_link(connection, table_id: int, row_id: int) -> tuple[str, str] | No
     if row is None:
         return None
     return str(row[0]), str(row[1])
+
+
+def platform_name_for_row(connection, table_id: int, row_id: int) -> str | None:
+    with connection.cursor() as cursor:
+        cursor.execute(PLATFORM_NAME_FOR_ROW, (table_id, row_id))
+        row = cursor.fetchone()
+    return None if row is None else str(row[0])
+
+
+def load_ad_for_update(
+    connection, *, normalized_url: str, natural_key: str
+) -> dict | None:
+    with connection.cursor() as cursor:
+        cursor.execute(LOAD_AD_FOR_UPDATE, (normalized_url, natural_key))
+        return _one_dict(cursor)
+
+
+def upsert_ad(
+    connection,
+    *,
+    reference: str,
+    advertiser_raw: str,
+    inn: str | None,
+    ogrn: str | None,
+    inn_valid: bool | None,
+    ogrn_valid: bool | None,
+    erid: str | None,
+    ad_label_present: bool,
+    extraction_status: str,
+    ad_source: str | None,
+    ad_url: str,
+    normalized_ad_url: str,
+    creative_ref: str | None,
+    creator_refs: str | None,
+    collected_at: str,
+    collected_by: str,
+    raw_payload: dict,
+    validation_status: str,
+) -> tuple[str, str | None]:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            UPSERT_AD,
+            (
+                reference,
+                advertiser_raw,
+                inn,
+                ogrn,
+                inn_valid,
+                ogrn_valid,
+                erid,
+                ad_label_present,
+                extraction_status,
+                ad_source,
+                ad_url,
+                normalized_ad_url,
+                creative_ref,
+                creator_refs,
+                collected_at,
+                collected_by,
+                json.dumps(raw_payload, ensure_ascii=False, default=str),
+                validation_status,
+            ),
+        )
+        row = cursor.fetchone()
+    reference = None if row[1] is None else str(row[1])
+    return str(row[0]), reference
+
+
+def link_ad_creator(connection, *, ad_id: str, creator_id: str, note: str) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(LINK_AD_CREATOR, (ad_id, creator_id, note))
 
 
 def upsert_source(
