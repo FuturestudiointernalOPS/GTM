@@ -33,8 +33,6 @@ from workflows.sync_common import (
 
 log = logging.getLogger("gtm.sync")
 
-CREATOR = "CREATOR"
-BUYER = "BUYER"
 OPT_OUT = "OPT_OUT"
 BLOCKED = "BLOCKED"
 
