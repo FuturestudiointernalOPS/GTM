@@ -82,6 +82,14 @@ class FakeCursor:
             state.ad_creators.add((params[0], params[1], params[2]))
             return
 
+        if "INSERT INTO baserow_link" in statement:
+            entity_type, entity_id, table_id, row_id, sync_hash = params
+            state.links[(entity_type, str(entity_id), int(table_id))] = (
+                int(row_id),
+                sync_hash,
+            )
+            return
+
         raise AssertionError(f"unexpected statement: {statement}")
 
     def fetchone(self):
