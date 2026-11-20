@@ -22,79 +22,18 @@ import json
 import logging
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 
 from config import settings
 from integrations import postgres, sync_store
 from integrations.baserow import BaserowRowClient
 from processing import baserow_mapping
+from workflows.sync_common import BaserowTables, error_fields, success_fields
 
 log = logging.getLogger("gtm.sync")
 
 CREATOR = "CREATOR"
 BUYER = "BUYER"
 PLATFORM = "PLATFORM"
-
-
-class SyncError(RuntimeError):
-    """The service cannot start: a setting or a table is missing."""
-
-
-@dataclass(frozen=True)
-class BaserowTables:
-    creators: int
-    buyers: int
-    platforms: int
-
-    @classmethod
-    def resolve(
-        cls,
-        client,
-        *,
-        database_id=None,
-        creators=None,
-        buyers=None,
-        platforms=None,
-    ) -> "BaserowTables":
-        """Use configured table ids, or discover them through the schema API."""
-        if creators and buyers and platforms:
-            return cls(
-                creators=_table_id("creators", creators),
-                buyers=_table_id("buyers", buyers),
-                platforms=_table_id("platforms", platforms),
-            )
-
-        if not database_id:
-            raise SyncError(
-                "set BASEROW_TABLE_CREATORS, BASEROW_TABLE_BUYERS and "
-                "BASEROW_TABLE_PLATFORMS, or set BASEROW_DATABASE_ID"
-            )
-
-        try:
-            listed = client.list_tables(int(database_id))
-        except (TypeError, ValueError) as error:
-            raise SyncError(f"invalid Baserow database id: {database_id!r}") from error
-
-        by_name = {str(table["name"]): int(table["id"]) for table in listed}
-        missing = [
-            name
-            for name in (
-                baserow_mapping.CREATOR_TABLE,
-                baserow_mapping.BUYER_TABLE,
-                baserow_mapping.PLATFORM_TABLE,
-            )
-            if name not in by_name
-        ]
-        if missing:
-            raise SyncError(
-                "Baserow is missing these tables: " + ", ".join(sorted(missing))
-            )
-
-        return cls(
-            creators=by_name[baserow_mapping.CREATOR_TABLE],
-            buyers=by_name[baserow_mapping.BUYER_TABLE],
-            platforms=by_name[baserow_mapping.PLATFORM_TABLE],
-        )
 
 
 @dataclass
@@ -348,7 +287,7 @@ def _report_error(
             if existing is not None:
                 row_id = int(existing["id"])
         if row_id is not None:
-            client.update_row(table_id, row_id, _error_fields(message))
+            client.update_row(table_id, row_id, error_fields(message))
     except Exception as report_error:  # noqa: BLE001 - the first error matters more
         log.warning(
             "could not display the sync error for %s: %s", entity_id, report_error
@@ -376,29 +315,7 @@ def _fail(
 def _write_fields(payload: dict, with_sync_fields: bool) -> dict:
     if not with_sync_fields:
         return dict(payload)
-    return {**payload, **_success_fields()}
-
-
-def _success_fields() -> dict:
-    return {
-        "sync_status": "SYNCED",
-        "sync_error": None,
-        "last_synced_at": datetime.now(timezone.utc).isoformat(),
-    }
-
-
-def _error_fields(message: str) -> dict:
-    return {"sync_status": "ERROR", "sync_error": message[:500]}
-
-
-def _table_id(name: str, value) -> int:
-    try:
-        table_id = int(value)
-    except (TypeError, ValueError) as error:
-        raise SyncError(f"invalid Baserow table id for {name}: {value!r}") from error
-    if table_id <= 0:
-        raise SyncError(f"invalid Baserow table id for {name}: {value!r}")
-    return table_id
+    return {**payload, **success_fields()}
 
 
 def _message(error: Exception) -> str:
