@@ -64,6 +64,26 @@ de contrôle. Sans entrée pour une fiche, **aucun verdict n'est pris** — une
 vérification absente n'est jamais un accord. Le format est décrit dans
 [`docs/eligibility.md`](docs/eligibility.md).
 
+## Démonstration rapide
+
+Pour montrer la chaîne sur un petit volume, sans base de données :
+
+```bash
+source .venv/bin/activate
+python -m workflows.demo --week 45 --num-results 5
+```
+
+La commande exécute une requête créateur et une requête entreprise du plan,
+affiche les pages trouvées, construit le résumé Telegram et demande au modèle un
+brouillon de message. Le brouillon n'est jamais envoyé : il est affiché pour
+validation humaine. `--send-telegram` envoie uniquement le résumé au chat
+configuré ; `--recipient buyer` prépare le brouillon pour une entreprise,
+`--no-ai` s'arrête après la recherche et `--json` produit la sortie machine.
+
+Coût indicatif : deux recherches Exa, une lecture de page et un appel au modèle.
+Les requêtes acheteur passent par Exa dans leur forme naturelle pour éviter les
+liens de redirection Google renvoyés par SerpApi.
+
 ## Base de données
 
 Le plus simple, avec Docker (aucun plugin Compose requis) :
