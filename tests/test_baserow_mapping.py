@@ -125,6 +125,26 @@ def test_creator_payload_has_only_database_owned_fields():
         assert derived_field not in payload
 
 
+def test_unknown_boolean_is_pushed_as_false():
+    fiche = creator_fiche()
+    fiche["registry_domain_ok"] = None
+    fiche["foreign_agent_label"] = None
+
+    payload = build_creator_row(fiche)
+
+    assert payload["registry_domain_ok"] is False
+    assert payload["foreign_agent_label"] is False
+
+
+def test_creator_payload_keeps_other_nulls():
+    fiche = creator_fiche()
+    fiche["average_concurrent_viewers"] = None
+
+    payload = build_creator_row(fiche)
+
+    assert payload["average_concurrent_viewers"] is None
+
+
 def test_creator_link_is_omitted_when_the_platform_is_not_resolved():
     payload = build_creator_row(creator_fiche(), platform_row_ids={})
 

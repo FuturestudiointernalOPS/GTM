@@ -168,7 +168,9 @@ def _build(
 
 def _convert(table: str, name: str, value: Any, field_type: str) -> Any:
     if value is None:
-        return None
+        # Baserow boolean fields reject null. Until the verification runs, the
+        # fiche stores None; the status fields record that it is still pending.
+        return False if field_type == "boolean" else None
 
     # A boolean is stored as a three-value list in the platform table.
     if (table, name) == (PLATFORM_TABLE, "stable_id_available"):
