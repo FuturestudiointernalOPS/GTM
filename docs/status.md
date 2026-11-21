@@ -18,6 +18,7 @@ Dernière revue : 2026-11-17.
 | Fiches, mesures, scores, décisions en PostgreSQL | prêt, testé avec une connexion simulée | `integrations/record_store.py`, `integrations/postgres.py` |
 | Contrôle d'éligibilité | logique prête et branchée au run ; les contrôles eux-mêmes restent une procédure humaine | `processing/eligibility.py`, `workflows/eligibility_step.py` |
 | Commande de run | disponible | `python -m main` |
+| Commande de démo (recherche, listes, brouillon) | disponible | `python -m workflows.demo` |
 | Seeder Baserow | prêt, `--dry-run` disponible | `db/baserow/apply_schema.py` |
 | Exécution réelle contre les services | **non validée** — aucun export réel rencontré | — |
 
