@@ -55,6 +55,32 @@ exister et être mal compris, ou être tiré d'un autre contexte. La citation
 Un test vérifie que la liste des champs du schéma est identique à la liste des
 clés du contrat d'enrichissement, pour que les deux ne puissent pas diverger.
 
+### Contacts publics et programmes
+
+La réponse peut aussi porter deux listes, hors des clés de score :
+
+| Liste | Filons | Contenu |
+|---|---|---|
+| `contacts` | créateur et acheteur | rôle professionnel, canal, valeur, nom public éventuel, description, citation |
+| `programmes` | acheteur | ce que l'entreprise propose ou demande, moyen de soumission, URL, citation |
+
+Les mêmes règles s'appliquent :
+
+- la valeur du contact et l'URL de soumission doivent réellement apparaître
+  dans la page ou dans les liens publics qui l'accompagnent ;
+- la citation doit apparaître dans le texte, à la casse et aux espaces près ;
+- un rôle inconnu ne produit pas de contact (K-01) ;
+- seuls les canaux professionnels et publics sont retenus ; une adresse privée,
+  un numéro personnel ou un annuaire fermé est écarté ;
+- trois contacts et trois programmes au maximum par page ;
+- un contact est créé une fois, avec sa source et sa date de lecture. Un contact
+  déjà présent n'est jamais écrasé par une nouvelle découverte.
+
+Un programme n'est pas une mesure de score : il est conservé avec le score pour
+que le brouillon et le rapport puissent le citer. Le rattachement d'un contact
+reste à vérifier par un humain ; la citation prouve qu'il est publié, pas qu'il
+est le bon interlocuteur.
+
 ---
 
 ## 2. Sortie

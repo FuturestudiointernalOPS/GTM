@@ -12,6 +12,13 @@ HTML = (
     "<body><script>var x = 1;</script><p>Hello world.</p></body></html>"
 )
 
+HTML_WITH_LINKS = (
+    "<html><head><title>Page</title></head>"
+    "<body><p>Hello world.</p>"
+    "<a href='/contact'>Contact</a>"
+    "<a href='https://t.me/studio'>Telegram</a></body></html>"
+)
+
 
 @pytest.fixture(autouse=True)
 def no_real_wait():
@@ -29,6 +36,17 @@ def test_reads_and_strips_html():
     assert read.title == "Page"
     assert read.text == "Hello world."
     assert read.error is None
+
+
+@respx.mock
+def test_links_are_kept_and_made_absolute():
+    respx.get("https://a.example").mock(
+        return_value=httpx.Response(200, text=HTML_WITH_LINKS)
+    )
+
+    (read,) = webreader.read_urls(["https://a.example"])
+
+    assert read.links == ("https://a.example/contact", "https://t.me/studio")
 
 
 @respx.mock

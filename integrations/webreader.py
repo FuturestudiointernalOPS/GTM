@@ -11,6 +11,7 @@ dedicated Actor instead.
 
 import logging
 from dataclasses import dataclass
+from urllib.parse import urljoin
 
 import httpx
 from bs4 import BeautifulSoup
@@ -40,6 +41,7 @@ class PageRead:
     status: int | None = None
     title: str | None = None
     text: str | None = None
+    links: tuple[str, ...] = ()
     error: str | None = None
 
 
@@ -127,6 +129,7 @@ def _read_with_retry(
         status=response.status_code,
         title=_title(response.text),
         text=text,
+        links=_links(response.text, base_url=url),
     )
 
 
@@ -143,3 +146,26 @@ def _title(html: str) -> str | None:
     if soup.title and soup.title.string:
         return soup.title.string.strip()
     return None
+
+
+def _links(html: str, *, base_url: str, limit: int = 50) -> tuple[str, ...]:
+    """Absolute links found on the page, in first-seen order.
+
+    Contacts and submission pages often live in an anchor rather than in the
+    visible text: the reader keeps the link so the extraction can cite it.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    seen: set[str] = set()
+    links: list[str] = []
+    for anchor in soup.find_all("a", href=True):
+        raw = anchor["href"].strip()
+        if not raw or raw.startswith(("#", "javascript:")):
+            continue
+        absolute = urljoin(base_url, raw)
+        if absolute in seen:
+            continue
+        seen.add(absolute)
+        links.append(absolute)
+        if len(links) >= limit:
+            break
+    return tuple(links)

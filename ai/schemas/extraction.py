@@ -45,19 +45,48 @@ class BuyerClaims(BaseModel):
     recent_event: bool | None = None
 
 
+class ContactClaim(BaseModel):
+    """One public professional contact proposed by the model."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: str
+    channel_type: str
+    channel_value: str
+    person_name: str | None = None
+    description: str | None = None
+    quote: str = ""
+
+
+class ProgramClaim(BaseModel):
+    """What a company offers or asks for, and how to submit something."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = None
+    description: str
+    submission_method: str | None = None
+    submission_url: str | None = None
+    quote: str = ""
+
+
 class CreatorExtraction(BaseModel):
-    """Claims plus the excerpts that support them."""
+    """Claims, public contacts and the excerpts that support them."""
 
     model_config = ConfigDict(extra="forbid")
 
     claims: CreatorClaims
     quotes: dict[str, str] = Field(default_factory=dict)
+    contacts: list[ContactClaim] = Field(default_factory=list)
 
 
 class BuyerExtraction(BaseModel):
-    """Claims plus the excerpts that support them."""
+    """Claims, identity, public contacts, programmes and their excerpts."""
 
     model_config = ConfigDict(extra="forbid")
 
     claims: BuyerClaims
     quotes: dict[str, str] = Field(default_factory=dict)
+    contacts: list[ContactClaim] = Field(default_factory=list)
+    programs: list[ProgramClaim] = Field(default_factory=list)
+    legal_name: str | None = None
