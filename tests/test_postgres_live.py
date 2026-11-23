@@ -61,3 +61,57 @@ def test_the_smoke_test_replays_and_leaves_nothing():
         ).fetchone()[0]
 
     assert remaining == 0
+
+
+def test_the_sync_outbox_and_a_review_action_round_trip():
+    with psycopg.connect(DSN) as connection:
+        sync_ready = connection.execute(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'sync_outbox' AND column_name = 'next_attempt_at'"
+        ).fetchone()
+        if not sync_ready:
+            pytest.skip("004_sync.sql is not applied")
+
+        cursor = connection.cursor()
+        try:
+            cursor.execute(
+                "INSERT INTO record (kind, criteria_version, workflow_status) "
+                "VALUES ('CREATOR', '1.4', 'POOL') RETURNING id"
+            )
+            record_id = cursor.fetchone()[0]
+            cursor.execute(
+                "INSERT INTO creator (record_id, display_name) VALUES (%s, %s)",
+                (record_id, "live-sync-test"),
+            )
+
+            pending = cursor.execute(
+                "SELECT count(*) FROM sync_outbox "
+                "WHERE entity_type = 'CREATOR' AND entity_id = %s",
+                (record_id,),
+            ).fetchone()[0]
+            assert pending == 1
+
+            cursor.execute(
+                "INSERT INTO baserow_event "
+                "(external_event_id, table_id, row_id, event_type, payload) "
+                "VALUES ('live-test:1', 1, 1, 'REVIEW_ACTION', '{}')"
+            )
+            cursor.execute(
+                "INSERT INTO review_request "
+                "(record_id, action, note, requested_by, external_event_id) "
+                "VALUES (%s, 'APPROVE', 'live test', 'analyst', 'live-test:1')",
+                (record_id,),
+            )
+            cursor.execute(
+                "SELECT transition_record("
+                "%s::uuid, 'APPROVED'::workflow_status, 'live test', 'analyst', "
+                "'WORKFLOW'::decision_type, '1.4', 'live-test:1', '{}'::jsonb)",
+                (record_id,),
+            )
+            status = cursor.execute(
+                "SELECT workflow_status FROM record WHERE id = %s", (record_id,)
+            ).fetchone()[0]
+
+            assert status == "APPROVED"
+        finally:
+            connection.rollback()

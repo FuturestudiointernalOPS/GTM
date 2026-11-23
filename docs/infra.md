@@ -371,6 +371,40 @@ Notes:
 - `~/.hermes/config.yaml.save` (nano emergency save after a disconnection) and `install-hermes.sh` removed.
 - Snapshot replaced by `hermes-proxy-ok-2026-11-05` (the plan keeps one snapshot: delete the old one first, only snapshot a known-good state).
 
+### 4.22 PostgreSQL container
+
+`db/postgres/container.sh` runs PostgreSQL with plain `docker`; the server does
+not ship the Compose plugin.
+
+| Item | Value |
+|---|---|
+| Image | `postgres:17-alpine@sha256:526f86d93c6ea08fd3f1fe5605650cacc781b2c6013169a0ad8f42c7d3d84f32` (pinned) |
+| Container | `gtm-postgres` |
+| Volume | `gtm-postgres-data` |
+| Port | `127.0.0.1:5432` only (never public) |
+| Restart policy | `unless-stopped` |
+| Logs | json-file, 10 MB, 3 files |
+| Schema | `001` then `002` on first `up`, only when `public.record` is missing |
+| Credentials | generated into `db/postgres/container.env` (mode 600, ignored by Git) |
+
+```bash
+./db/postgres/container.sh up       # create, wait, apply the schema
+./db/postgres/container.sh check    # replay smoke_test.sql, then ROLLBACK
+./db/postgres/container.sh test     # live PostgreSQL tests
+./db/postgres/container.sh psql     # interactive session
+./db/postgres/container.sh migrate  # apply 003 to an older database
+./db/postgres/container.sh down     # remove the container, keep the volume
+```
+
+The application reads `DATABASE_URL` from `.env`; it must use the password from
+`db/postgres/container.env`. The CI `postgres` job runs the same `up`, `check`
+and `test` commands on a throwaway runner.
+
+This container is for development and validation. It does not decide the
+production hosting question (managed service or container on the server), and
+the Docker volume is not a backup policy: `pg_dump` stays the operator's job.
+
+---
 ## 4b. Code workflow (GitHub)
 
 - Repository: `git@github.com:FuturestudiointernalOPS/GTM.git` (remote switched from HTTPS to SSH).

@@ -10,7 +10,70 @@ Ce dossier contient le schéma des fiches créateur et acheteur, en deux couches
 Le raisonnement complet est dans `docs/data-model.md`. Les règles métier
 proviennent de `docs/scope.md` et `docs/verification.md`.
 
-## PostgreSQL
+## Conteneur Docker (développement et validation)
+
+Le serveur ne fournit pas le plugin `docker compose` : le script n'utilise que
+`docker`.
+
+```bash
+./db/postgres/container.sh up      # crée le conteneur, attend, applique 001 + 002
+./db/postgres/container.sh status
+./db/postgres/container.sh check   # rejoue smoke_test.sql puis ROLLBACK
+./db/postgres/container.sh test    # tests d'intégration PostgreSQL
+./db/postgres/container.sh psql    # session interactive
+./db/postgres/container.sh migrate # applique 003, 004 et 005 à une base existante
+./db/postgres/container.sh down    # retire le conteneur, garde les données
+./db/postgres/container.sh reset --yes  # retire aussi le volume
+```
+
+- le premier `up` sans `POSTGRES_PASSWORD` génère un mot de passe dans
+  `db/postgres/container.env` (mode 600, ignoré par Git) plutôt que de
+  l'afficher ;
+- le conteneur écoute uniquement sur `127.0.0.1:5432` et redémarre avec Docker
+  (`unless-stopped`) ;
+- l'image est épinglée par digest (`postgres:17-alpine@sha256:526f...`). Pour la
+  mettre à jour : changer `POSTGRES_IMAGE` ou le défaut du script, puis
+  `reset --yes`, `up`, `check` et `test` ;
+- le schéma n'est appliqué que si `public.record` manque. Une base plus ancienne
+  se migre avec `migrate` ;
+- `down` garde le volume, `reset` le supprime. Une modification du mot de passe
+  exige `reset --yes` puis `up`.
+
+Réglages reconnus (environnement, puis `db/postgres/container.env`, puis `.env`
+de la racine) :
+
+| Réglage | Défaut | Rôle |
+|---|---|---|
+| `POSTGRES_DB` | `gtm` | nom de la base |
+| `POSTGRES_USER` | `gtm` | rôle applicatif |
+| `POSTGRES_PASSWORD` | généré | mot de passe ; garder des caractères compatibles URL (`@`, `/`, `:` à éviter) |
+| `POSTGRES_PORT` | `5432` | port publié sur `127.0.0.1` |
+| `POSTGRES_IMAGE` | digest épinglé | image utilisée |
+| `POSTGRES_CONTAINER` | `gtm-postgres` | nom du conteneur |
+| `POSTGRES_VOLUME` | `gtm-postgres-data` | volume des données |
+
+Une valeur par ligne, sans commentaire en fin de ligne.
+
+Reporter l'URL dans le `.env` de l'application, avec le mot de passe lu dans
+`db/postgres/container.env` :
+
+```dotenv
+DATABASE_URL=postgresql://gtm:<mot_de_passe>@127.0.0.1:5432/gtm
+```
+
+Sauvegarde et restauration :
+
+```bash
+docker exec gtm-postgres pg_dump -U gtm -d gtm -Fc > backups/gtm-$(date +%F).dump
+docker exec -i gtm-postgres pg_restore -U gtm -d gtm --clean --if-exists < backups/gtm-XXXX.dump
+```
+
+Les sauvegardes restent à la charge de l'exploitation : le volume Docker n'est
+pas une politique de sauvegarde.
+
+## PostgreSQL sans Docker
+
+Si aucun conteneur n'est utilisé :
 
 ```bash
 psql -f db/postgres/001_schema.sql
@@ -31,6 +94,18 @@ psql -f db/postgres/003_engagement.sql
 
 Elle ajoute les champs d'engagement, l'échantillon et le résultat de mesure, puis
 met à jour la vue de contrat. Elle est idempotente.
+
+Sur une base créée avant la synchronisation, appliquer aussi :
+
+```bash
+psql -f db/postgres/004_sync.sql
+psql -f db/postgres/005_evidence.sql
+```
+
+`004` ajoute la location des éléments de la file, garantit un seul changement en
+attente par fiche et installe les déclencheurs qui alimentent la file. `005`
+ajoute l'identité stable d'une preuve sur un fait, pour qu'un rejeu ne crée pas
+un deuxième fait. Les deux migrations sont idempotentes.
 
 `smoke_test.sql` insère un créateur, un acheteur, un profil, une source, des
 faits, une transition de statut et un opt-out, puis termine par `ROLLBACK`. Il
@@ -102,7 +177,8 @@ Le mode `--dry-run` lit les tables existantes et affiche :
 - les champs qui seraient créés ;
 - les champs primaires à renommer ;
 - les options de liste manquantes ;
-- les incohérences de type ou de lien.
+- les incohérences de type ou de lien ;
+- les vues et les filtres qui seraient créés.
 
 Aucune requête `POST` ou `PATCH` n'est envoyée.
 
@@ -112,17 +188,19 @@ Aucune requête `POST` ou `PATCH` n'est envoyée.
 .venv/bin/python -m db.baserow.apply_schema
 ```
 
-Le seeder procède en quatre passes :
+Le seeder procède en cinq passes :
 
 1. créer les tables manquantes ;
 2. renommer le champ primaire par défaut (`Name`) et créer les champs simples ;
 3. créer les champs de lien entre tables ;
 4. créer les champs calculés (`formula`), de recherche (`lookup`) et de
-   comptage (`count`).
+   comptage (`count`) ;
+5. créer les vues de travail et leurs filtres.
 
 Il est idempotent : une deuxième exécution ne recrée rien. Il ne supprime jamais
-une table, un champ ou une option. Si un champ existe avec un autre type, ou si
-un lien pointe ailleurs, il le signale et n'écrase pas.
+une table, un champ, une option ou un filtre. Si un champ existe avec un autre
+type, si un lien pointe ailleurs, ou si un filtre de vue diffère, il le signale
+et n'écrase pas.
 
 ### 6. Vérifier dans Baserow
 
@@ -132,13 +210,14 @@ Contrôler au minimum :
 - `Createurs.display_name` et `Acheteurs.legal_name` sont les champs primaires ;
 - `Createurs.main_platform` pointe vers `Plateformes` ;
 - `Publicites_etiquetees.label_complete` est bien un champ calculé ;
+- les onze vues du §7 existent avec leurs filtres ;
 - `Preuves` et `Decisions` sont en lecture seule pour les rôles qui ne doivent
   pas les modifier.
 
-### 7. Créer les vues et filtres
+### 7. Vérifier les vues et filtres
 
-Le seeder crée la structure, pas les vues de travail. Créer dans Baserow les
-vues décrites dans `docs/data-model.md` §4.5 :
+Le seeder crée aussi les onze vues de travail décrites dans
+`docs/data-model.md` §4.5, d'après la section `views` de `schema.json` :
 
 - File de revue ;
 - Engagement à revoir ;
@@ -151,6 +230,18 @@ vues décrites dans `docs/data-model.md` §4.5 :
 - Preuves à relire ;
 - Contacts à vérifier ;
 - Erreurs de synchronisation.
+
+Chaque vue est un tableau (`grid`) portant son propre `filter_type` (`AND` ou
+`OR`) et ses filtres. Les filtres désignent les champs par leur nom et les
+`single_select` par le libellé de l'option (`TO_REVIEW`, `POOL`…), pas par leur
+identifiant Baserow : le même `schema.json` s'applique donc à tous les
+environnements.
+
+La douzième ligne du §4.5 (`Doublons potentiels`) est un regroupement, pas un
+filtre : elle se configure à la main dans Baserow si elle est nécessaire.
+
+Relancer le seeder ne recrée pas une vue existante et n'ajoute que les filtres
+manquants. Il ne supprime jamais un filtre ajouté à la main.
 
 ### 8. Régler les permissions
 
@@ -204,11 +295,179 @@ Sans cette variable, ces tests sont ignorés : la suite ordinaire reste hors
 réseau. Le script `smoke_test.sql` se termine par `ROLLBACK`, il ne laisse rien
 en base.
 
-## Brancher la synchronisation
+## Synchronisation PostgreSQL → Baserow (lot 1)
 
-Les tables `sync_outbox` et `baserow_event` existent, mais aucune écriture ne les
-alimente encore : le service de synchronisation reste à écrire. Ne pas créer de
-vues Baserow qui supposeraient des champs non synchronisés sans le signaler.
+La sortie est branchée. Une fiche créée ou modifiée dépose automatiquement un
+changement en attente ; un seul changement reste en attente par fiche. Le
+service :
+
+1. pousse d'abord la table de référence `Plateformes` ;
+2. loue quelques changements en attente ;
+3. relit la fiche courante, ne garde que les champs `owner=pg` et résout le
+   lien vers la plateforme principale ;
+4. crée ou met à jour la ligne Baserow, retient son identifiant et son
+   empreinte ;
+5. marque le changement traité, ou conserve l'erreur et le nombre d'essais.
+
+Un champ `owner=baserow` n'est jamais envoyé. Une fiche inchangée n'est jamais
+renvoyée. Baserow affiche `sync_status`, `sync_error` et `last_synced_at` sur
+les fiches.
+
+### Configuration
+
+Ajouter au `.env` :
+
+```dotenv
+BASEROW_ROW_TOKEN=...        # jeton de base durable, pas le JWT de structure
+BASEROW_ROW_AUTH_SCHEME=Token
+BASEROW_TABLE_CREATORS=...
+BASEROW_TABLE_BUYERS=...
+BASEROW_TABLE_PLATFORMS=...
+BASEROW_TABLE_CONTACTS=...
+BASEROW_TABLE_PROOFS=...
+BASEROW_TABLE_ADS=...
+```
+
+Les identifiants de tables se lisent dans l'URL Baserow
+`https://…/database/{id}/table/{id}/`. Le jeton de structure expire au bout
+d'une heure ; il ne convient pas au service. Sans ces identifiants, le service
+tente de découvrir les tables, ce qui suppose un jeton autorisé à lire la
+structure.
+
+### Lancer
+
+```bash
+.venv/bin/python -m workflows.sync_push --limit 50
+.venv/bin/python -m workflows.sync_push --help
+```
+
+La commande traite une passe et s'arrête. Elle peut être appelée par une tâche
+planifiée. En cas d'échec, `sync_outbox.attempts` et `last_error` gardent la
+trace ; après le nombre d'essais maximal, `next_attempt_at` passe à `NULL` et
+l'élément attend une intervention. Pour le rejouer, remettre `attempts = 0` et
+`next_attempt_at = now()`.
+
+## Synchronisation Baserow → PostgreSQL (lot 2)
+
+Le sens inverse lit les lignes `Createurs` et `Acheteurs` qui portent une
+action de revue. Pour chaque action, il :
+
+1. calcule une empreinte stable (ligne, action, note, date) et l'écrit dans
+   `baserow_event` ; une empreinte déjà appliquée ou rejetée est ignorée ;
+2. relit la fiche dans PostgreSQL et valide la transition ;
+3. écrit `review_request` puis `workflow_event` par le point d'entrée unique ;
+4. acquitte la ligne Baserow avec `review_action_processed = true`.
+
+Une transition refusée laisse `baserow_event.status = REJECTED` et affiche un
+message lisible dans `sync_error` ; le statut de la fiche ne change pas. Si
+l'acquittement Baserow échoue après le commit PostgreSQL, l'événement reste
+`PENDING` et la passe suivante termine l'acquittement sans rejouer la
+transition.
+
+Actions acceptées : `REQUEST_REVIEW`, `APPROVE`, `REJECT`, `COMPLIANCE_REVIEW`,
+`START_AUDIT`, `ADD_TO_POOL`, `MARK_CONTACTED`, `RECORD_OPT_OUT`. Les règles de
+statut, de justification et de responsable sont dans
+`processing/review_actions.py`. `APPROVE` et `REJECT` exigent une note et un
+`assigned_to` ; sortir de `COMPLIANCE_REVIEW` aussi. Aucune action ne rouvre
+une fiche `OPT_OUT` ou `CLIENT`, sauf `RECORD_OPT_OUT` qui reste le plus
+restrictif.
+
+```bash
+.venv/bin/python -m workflows.sync_pull
+.venv/bin/python -m workflows.sync_pull --help
+```
+
+## Synchronisation Baserow → PostgreSQL — contacts (lot 3a)
+
+Le service des contacts lit la table `Contacts`, résout le lien vers la fiche
+(createur ou acheteur) via `baserow_link`, puis upsert le contact par
+`(record_id, channel_type, lower(channel_value))`.
+
+- Un contact non professionnel et non public est refusé (K-01), sauf s'il est
+  `BLOCKED` ou `OPT_OUT`.
+- Un `OPT_OUT` insère immédiatement un `contact_event` ; le déclencheur
+  `apply_contact_event` passe la fiche en `OPT_OUT` et tous ses contacts en
+  `OPT_OUT`.
+- Une fiche déjà `OPT_OUT` force tout contact entrant à `OPT_OUT` : elle n'est
+  jamais réactivée automatiquement.
+- Une ligne dont la fiche liée n'a pas encore été poussée vers Baserow est
+  refusée avec un message demandant de lancer la sortie d'abord.
+
+```bash
+.venv/bin/python -m workflows.sync_contacts
+.venv/bin/python -m workflows.sync_contacts --help
+```
+
+## Synchronisation Baserow → PostgreSQL — preuves (lot 3b)
+
+Le service des preuves lit la table `Preuves`. Une preuve n'entre dans le score
+que si un humain l'a marquée `ACCEPTED` ; `PENDING`, `REJECTED` et `CONFLICT`
+restent dans Baserow pour la revue.
+
+Pour une preuve acceptée, le service :
+
+1. résout la fiche liée via `baserow_link` ;
+2. contrôle la clef, la valeur, le niveau de preuve, la confiance, la source et
+   la date de consultation ;
+3. crée ou retrouve la source et sa consultation datée, puis les rattache à la
+   fiche ;
+4. insère le fait typé avec une identité stable de preuve.
+
+Une valeur mal formée est refusée, pas convertie en zéro : `followers = many`
+n'est pas un fait. Une preuve déjà importée ne peut pas changer de valeur : la
+correction est une nouvelle preuve. Le rejeu de la même ligne ne crée pas un
+deuxième fait.
+
+```bash
+.venv/bin/python -m workflows.sync_evidence
+.venv/bin/python -m workflows.sync_evidence --help
+```
+
+## Synchronisation Baserow → PostgreSQL — publicités (lot 3c)
+
+Le service des publicités lit la table `Publicites_etiquetees`. Il importe les
+lignes `DRAFT` et `SUBMITTED` ; une ligne `IMPORTED` n'est plus modifiée, et
+une ligne `REJECTED` n'est pas importée.
+
+Il contrôle le nom d'annonceur, l'URL, la date et l'auteur de collecte, le
+statut d'extraction et la présence de la mention. Il calcule ensuite les
+chiffres de contrôle INN et OGRN, résout le support publicitaire via la table
+`Plateformes`, puis insère la publicité et ses liens créateur.
+
+- Une publicité dont une fiche créateur liée n'est pas encore synchronisée est
+  stockée, mais marquée en erreur ; une passe ultérieure ajoute le lien.
+- Une publicité déjà `IMPORTED` ne peut pas être réécrite : une correction est
+  une nouvelle ligne.
+- Le lien acheteur est laissé vide : il appartient au rapprochement
+  INN/OGRN, pas à la saisie Baserow.
+
+```bash
+.venv/bin/python -m workflows.sync_ads
+.venv/bin/python -m workflows.sync_ads --help
+```
+
+## Rapprochement acheteur des publicités (lot 3d)
+
+Le service de rapprochement lit les publicités encore `DRAFT` ou `SUBMITTED`
+qui n'ont pas de buyer, puis :
+
+1. garde l'INN et l'OGRN dont le chiffre de contrôle est valide ;
+2. cherche un acheteur par INN et par OGRN ;
+3. s'il y a exactement un candidat, le rattache ;
+4. si aucun candidat n'existe, crée l'acheteur depuis le nom d'annonceur et
+   l'identifiant valide ;
+5. si plusieurs acheteurs correspondent, marque la publicité `AMBIGUOUS` sans
+   choisir.
+
+Une publicité n'est marquée `IMPORTED` que lorsque le lien acheteur existe
+côté Baserow. Un acheteur créé pendant la passe doit d'abord être poussé par
+`sync_push` ; la passe suivante termine le rattachement et passe la publicité
+en `IMPORTED`.
+
+```bash
+.venv/bin/python -m workflows.match_ads --limit 100
+.venv/bin/python -m workflows.match_ads --help
+```
 
 ## Erreurs fréquentes
 
@@ -225,6 +484,9 @@ vues Baserow qui supposeraient des champs non synchronisés sans le signaler.
 
 1. Exécuter le seeder sur l'instance Baserow réelle, puis créer les vues et
    régler les permissions.
-2. Brancher `sync_outbox` et `baserow_event` sur le service de synchronisation.
-3. Ajouter une politique de sauvegarde et de restauration PostgreSQL.
-4. Trancher l'attribution partielle (C-02/B-01) avant de figer les scores.
+2. Renseigner le jeton de lignes et les identifiants de tables, appliquer
+   `004_sync.sql`, puis lancer une passe de synchronisation.
+3. Valider la chaîne complète contre une instance Baserow réelle et un export
+   réel, puis ajuster les formats ou permissions si nécessaire.
+4. Ajouter une politique de sauvegarde et de restauration PostgreSQL.
+5. Trancher l'attribution partielle (C-02/B-01) avant de figer les scores.
