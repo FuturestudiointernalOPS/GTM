@@ -1,8 +1,9 @@
-"""Create the Baserow tables and fields from db/baserow/schema.json.
+"""Create the Baserow tables, fields and views from db/baserow/schema.json.
 
 Why a seeder: the operational schema must be reproducible, not retyped by hand.
-The seeder is idempotent: it finds existing tables and fields by name, creates
-what is missing, and reports type or link mismatches instead of overwriting them.
+The seeder is idempotent: it finds existing tables, fields and views by name,
+creates what is missing, and reports type or link mismatches instead of
+overwriting them.
 
 Usage:
     python -m db.baserow.apply_schema --dry-run
@@ -42,11 +43,59 @@ NORMAL_TYPES = {
     "single_select",
     "multiple_select",
     "created_on",
-    "last_modified_on",
+    "last_modified",
 }
 LINK_TYPES = {"link_row"}
 DERIVED_TYPES = {"formula", "lookup", "count"}
 ALL_TYPES = NORMAL_TYPES | LINK_TYPES | DERIVED_TYPES
+
+VIEW_TYPES = {"grid"}
+FILTER_TYPES = {"AND", "OR"}
+
+# Operators accepted in schema.json, with the field types they can filter.
+# "formula" is allowed wherever the computed result could match, because the
+# schema does not record the formula's result type.
+VIEW_FILTER_OPERATORS: dict[str, set[str]] = {
+    "equal": ALL_TYPES,
+    "not_equal": ALL_TYPES,
+    "contains": {
+        "text",
+        "long_text",
+        "url",
+        "single_select",
+        "multiple_select",
+        "formula",
+    },
+    "contains_not": {
+        "text",
+        "long_text",
+        "url",
+        "single_select",
+        "multiple_select",
+        "formula",
+    },
+    "empty": ALL_TYPES,
+    "not_empty": ALL_TYPES,
+    "boolean": {"boolean", "formula"},
+    "higher_than": {"number", "date", "date_time", "formula"},
+    "higher_than_or_equal": {"number", "date", "date_time", "formula"},
+    "lower_than": {"number", "date", "date_time", "formula"},
+    "lower_than_or_equal": {"number", "date", "date_time", "formula"},
+    "single_select_equal": {"single_select", "formula"},
+    "single_select_not_equal": {"single_select", "formula"},
+    "single_select_is_any_of": {"single_select", "formula"},
+    "single_select_is_none_of": {"single_select", "formula"},
+    "multiple_select_has": {"multiple_select", "formula"},
+    "multiple_select_has_not": {"multiple_select", "formula"},
+    "link_row_has": {"link_row"},
+    "link_row_has_not": {"link_row"},
+    "date_equal": {"date", "date_time", "formula"},
+    "date_before": {"date", "date_time", "formula"},
+    "date_before_or_equal": {"date", "date_time", "formula"},
+    "date_after": {"date", "date_time", "formula"},
+    "date_after_or_equal": {"date", "date_time", "formula"},
+    "date_not_equal": {"date", "date_time", "formula"},
+}
 
 COLORS = [
     "blue",
@@ -89,6 +138,8 @@ class ApplyResult:
     created_tables: list[str] = field(default_factory=list)
     created_fields: list[str] = field(default_factory=list)
     updated_fields: list[str] = field(default_factory=list)
+    created_views: list[str] = field(default_factory=list)
+    created_view_filters: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
@@ -120,6 +171,7 @@ def apply_schema(
 
     if dry_run:
         _plan_tables(states, client, result)
+        _ensure_views(states, schema, client, result, dry_run=True)
         return result
 
     _load_fields(states, client)
@@ -153,6 +205,9 @@ def apply_schema(
             if spec["type"] not in DERIVED_TYPES:
                 continue
             _ensure_field(state, spec, states, client, result, dry_run=False)
+
+    # Views last: their filters need the field ids.
+    _ensure_views(states, schema, client, result, dry_run=False)
 
     return result
 
@@ -251,6 +306,104 @@ def _validate_schema(schema: dict) -> list[str]:
                         errors.append(
                             f"{name}.{field_name}: unknown target_field {target_field!r}"
                         )
+
+    errors.extend(_validate_views(schema, table_names, specs_by_table))
+
+    return errors
+
+
+def _validate_views(
+    schema: dict,
+    table_names: set[str],
+    specs_by_table: dict[str, list[dict]],
+) -> list[str]:
+    """Check the view list before touching Baserow."""
+    views = schema.get("views") or []
+    if not isinstance(views, list):
+        return ["schema.views must be a list"]
+
+    errors: list[str] = []
+    seen: set[tuple[str, str]] = set()
+
+    for view in views:
+        if not isinstance(view, dict):
+            errors.append("a view is not an object")
+            continue
+
+        name = view.get("name")
+        table_name = view.get("table")
+        if not name:
+            errors.append("a view has no name")
+            continue
+        if table_name not in table_names:
+            errors.append(f"view {name!r}: unknown table {table_name!r}")
+            continue
+        if (table_name, name) in seen:
+            errors.append(f"view {name!r}: duplicate on table {table_name!r}")
+            continue
+        seen.add((table_name, name))
+
+        if view.get("type", "grid") not in VIEW_TYPES:
+            errors.append(f"view {name!r}: unknown type {view.get('type')!r}")
+        if view.get("filter_type", "AND") not in FILTER_TYPES:
+            errors.append(
+                f"view {name!r}: filter_type must be AND or OR, "
+                f"got {view.get('filter_type')!r}"
+            )
+
+        fields = {spec.get("name"): spec for spec in specs_by_table[table_name]}
+        for item in view.get("filters") or []:
+            errors.extend(_validate_view_filter(name, item, fields))
+
+    return errors
+
+
+def _validate_view_filter(
+    view_name: str,
+    item: dict,
+    fields: dict[str, dict],
+) -> list[str]:
+    field_name = item.get("field")
+    spec = fields.get(field_name)
+    if spec is None:
+        return [f"view {view_name!r}: unknown field {field_name!r}"]
+
+    operator = item.get("type")
+    allowed = VIEW_FILTER_OPERATORS.get(operator)
+    if allowed is None:
+        return [f"view {view_name!r}: unknown filter operator {operator!r}"]
+
+    field_type = spec.get("type")
+    if field_type not in allowed:
+        return [
+            f"view {view_name!r}: {operator!r} cannot filter {field_name!r} "
+            f"of type {field_type!r}"
+        ]
+
+    errors: list[str] = []
+    value = str(item.get("value", ""))
+
+    if operator in {"boolean"}:
+        if value.lower() not in {"true", "false", "1", "0", ""}:
+            errors.append(
+                f"view {view_name!r}: boolean filter on {field_name!r} "
+                f"needs true or false, got {value!r}"
+            )
+        return errors
+
+    uses_select_labels = operator.startswith("single_select_") or operator.startswith(
+        "multiple_select_"
+    )
+    if uses_select_labels and field_type in {"single_select", "multiple_select"}:
+        options = set(spec.get("options") or [])
+        tokens = [token.strip() for token in value.split(",") if token.strip()]
+        if not tokens:
+            errors.append(f"view {view_name!r}: filter on {field_name!r} has no value")
+        for token in tokens:
+            if token not in options:
+                errors.append(
+                    f"view {view_name!r}: {token!r} is not an option of {field_name!r}"
+                )
 
     return errors
 
@@ -614,6 +767,192 @@ def _check_link_row(
 
 
 # ---------------------------------------------------------------------------
+# Views
+# ---------------------------------------------------------------------------
+
+
+def _ensure_views(
+    states: dict[str, TableState],
+    schema: dict,
+    client: BaserowClient,
+    result: ApplyResult,
+    *,
+    dry_run: bool,
+) -> None:
+    """Create the working views and their filters, without deleting anything."""
+    view_specs = schema.get("views") or []
+    if not view_specs:
+        return
+
+    cache: dict[str, dict[str, dict]] = {}
+
+    for view_spec in view_specs:
+        table = states.get(view_spec["table"])
+        if table is None or table.table_id is None:
+            label = f"{view_spec['table']}/{view_spec['name']}"
+            if dry_run:
+                log.info("[dry-run] would create view %s", label)
+                result.created_views.append(label)
+            else:
+                result.errors.append(
+                    f"view {view_spec['name']!r}: table "
+                    f"{view_spec['table']!r} is unavailable"
+                )
+            continue
+
+        if table.name not in cache:
+            try:
+                existing_views = client.list_views(table.table_id, include="filters")
+            except BaserowError as error:
+                result.errors.append(f"{table.name}: cannot read views ({error})")
+                cache[table.name] = {}
+                continue
+            cache[table.name] = {
+                view["name"]: view for view in existing_views if view.get("name")
+            }
+
+        existing = cache[table.name].get(view_spec["name"])
+        if existing is None:
+            _create_view(table, view_spec, client, result, dry_run=dry_run)
+            continue
+
+        desired = _desired_view_filters(table, view_spec)
+        if desired is None:
+            result.errors.append(
+                f"view {table.name}/{view_spec['name']}: a filter field is missing"
+            )
+            continue
+
+        _check_view(
+            table, view_spec, existing, desired, client, result, dry_run=dry_run
+        )
+
+
+def _desired_view_filters(table: TableState, view_spec: dict) -> list[dict] | None:
+    """Translate field names into the field ids Baserow expects."""
+    desired: list[dict] = []
+    for item in view_spec.get("filters") or []:
+        field = table.fields.get(item["field"])
+        if field is None or field.get("id") is None:
+            return None
+        desired.append(
+            {
+                "field": field["id"],
+                "type": item["type"],
+                "value": str(item.get("value", "")),
+            }
+        )
+    return desired
+
+
+def _create_view(
+    table: TableState,
+    view_spec: dict,
+    client: BaserowClient,
+    result: ApplyResult,
+    *,
+    dry_run: bool,
+) -> None:
+    label = f"{table.name}/{view_spec['name']}"
+    filter_labels = [
+        _filter_label(table, item) for item in view_spec.get("filters") or []
+    ]
+
+    if dry_run:
+        log.info("[dry-run] would create view %s", label)
+        result.created_views.append(label)
+        for filter_label in filter_labels:
+            result.created_view_filters.append(f"{label}.{filter_label}")
+        return
+
+    desired = _desired_view_filters(table, view_spec)
+    if desired is None:
+        result.errors.append(f"view {label}: a filter field is missing")
+        return
+
+    created = client.create_view(
+        table.table_id,
+        view_spec["name"],
+        view_spec.get("type", "grid"),
+        view_spec.get("filter_type", "AND"),
+    )
+    view_id = created.get("id") if isinstance(created, dict) else None
+    if view_id is None:
+        result.errors.append(f"view {label} was created without an id")
+        return
+
+    result.created_views.append(label)
+    log.info("created view %s (id %s)", label, view_id)
+
+    for payload, filter_label in zip(desired, filter_labels):
+        client.create_view_filter(view_id, payload)
+        result.created_view_filters.append(f"{label}.{filter_label}")
+        log.info("created view filter %s.%s", label, filter_label)
+
+
+def _check_view(
+    table: TableState,
+    view_spec: dict,
+    existing: dict,
+    desired: list[dict],
+    client: BaserowClient,
+    result: ApplyResult,
+    *,
+    dry_run: bool,
+) -> None:
+    label = f"{table.name}/{view_spec['name']}"
+
+    view_type = existing.get("type")
+    if view_type not in (None, "grid"):
+        result.errors.append(
+            f"view {label}: has type {view_type!r}, expected 'grid'; "
+            f"the seeder does not change view types"
+        )
+        return
+
+    current_type = existing.get("filter_type")
+    expected_type = view_spec.get("filter_type", "AND")
+    if current_type is not None and current_type != expected_type:
+        result.errors.append(
+            f"view {label}: filter_type is {current_type!r}, expected "
+            f"{expected_type!r}; change it manually"
+        )
+        return
+
+    current = {
+        (item.get("field"), item.get("type"), str(item.get("value", "")))
+        for item in existing.get("filters") or []
+    }
+    wanted = {(item["field"], item["type"], item["value"]) for item in desired}
+
+    missing = [
+        (payload, filter_spec)
+        for payload, filter_spec in zip(desired, view_spec.get("filters") or [])
+        if (payload["field"], payload["type"], payload["value"]) not in current
+    ]
+    for payload, filter_spec in missing:
+        filter_label = _filter_label(table, filter_spec)
+        if dry_run:
+            log.info("[dry-run] would add filter %s.%s", label, filter_label)
+            result.created_view_filters.append(f"{label}.{filter_label}")
+            continue
+        client.create_view_filter(existing["id"], payload)
+        result.created_view_filters.append(f"{label}.{filter_label}")
+        log.info("added filter %s.%s", label, filter_label)
+
+    extra = current - wanted
+    if extra:
+        result.warnings.append(
+            f"view {label}: {len(extra)} filter(s) not in schema.json were left "
+            f"untouched"
+        )
+
+
+def _filter_label(table: TableState, item: dict) -> str:
+    return f"{item['field']} {item['type']} {item.get('value', '')}".strip()
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -646,11 +985,14 @@ def _default_database_id() -> int | None:
 def _print_summary(result: ApplyResult, *, dry_run: bool) -> None:
     mode = "DRY-RUN" if dry_run else "APPLIED"
     log.info(
-        "%s: %s table(s) created, %s field(s) created, %s field(s) updated",
+        "%s: %s table(s) created, %s field(s) created, %s field(s) updated, "
+        "%s view(s) created, %s view filter(s) created",
         mode,
         len(result.created_tables),
         len(result.created_fields),
         len(result.updated_fields),
+        len(result.created_views),
+        len(result.created_view_filters),
     )
     for warning in result.warnings:
         log.warning("%s", warning)

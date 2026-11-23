@@ -229,7 +229,7 @@ plateforme Telegram ou YouTube porte une date limite, pas un rejet silencieux.
 | `sync_error` | long_text | non | PG | erreur lisible |
 | `last_synced_at` | date_time | non | PG | dernière synchronisation |
 | `created_at` | created_on | non | D | création |
-| `updated_at` | last_modified_on | non | D | dernière modification |
+| `updated_at` | last_modified | non | D | dernière modification |
 
 ### 4.3 Fiche `Acheteurs`
 
@@ -336,7 +336,7 @@ vérification réussie.
 | `sync_error` | long_text | non | PG | erreur lisible |
 | `last_synced_at` | date_time | non | PG | dernière synchronisation |
 | `created_at` | created_on | non | D | création |
-| `updated_at` | last_modified_on | non | D | dernière modification |
+| `updated_at` | last_modified | non | D | dernière modification |
 
 ### 4.4 Tables de support
 
@@ -580,6 +580,8 @@ erDiagram
   `value_json`, jamais plusieurs à la fois.
 - Il porte `proof_level` (`OBSERVED`, `DECLARED`, `INFERRED`), `confidence`
   (`VERIFIED`, `PARTIAL`, `UNVERIFIED`) et un `source_snapshot_id` obligatoire.
+- Un fait importé depuis Baserow porte aussi `external_event_id`, l'identité
+  stable de la preuve : un rejeu ne crée pas un deuxième fait.
 - Une correction insère un nouveau fait avec `supersedes_id`. L'ancien passe à
   `is_current = false`. Le trigger vérifie que la supersession vise le même
   sujet et la même clef.
@@ -674,6 +676,12 @@ erDiagram
 5. En cas d'échec, `sync_outbox.attempts` et `last_error` conservent la trace ;
    Baserow affiche `sync_status` et `sync_error` sur la fiche.
 
+Le lot 1 est implémenté par `workflows/sync_push.py` : il pousse les fiches
+créateur et acheteur et la table `Plateformes`, jamais un champ `owner=baserow`.
+`004_sync.sql` installe les déclencheurs qui écrivent dans `sync_outbox` et
+`next_attempt_at`, qui sert de location courte au service. Le sens inverse
+(§6.3) reste à écrire.
+
 ### 6.3 Baserow → PostgreSQL
 
 1. Baserow envoie un webhook (ou le service interroge les lignes modifiées).
@@ -694,6 +702,37 @@ erDiagram
    rejette le changement et le journalise.
 6. Les écritures faites par le service lui-même sont marquées et ignorées à la
    réception, pour éviter une boucle PG → Baserow → PG.
+
+Le lot 2 est implémenté par `workflows/sync_pull.py` : il lit les actions de
+revue et le refus de contact, déduplique chaque empreinte dans `baserow_event`,
+valide la transition avec `processing/review_actions.py`, écrit
+`review_request` et `workflow_event`, puis acquitte la ligne Baserow. Une
+transition déjà commitée est reprise sans second journal ; un acquittement
+échoué reste `PENDING` et sera terminé à la passe suivante.
+
+Les contacts sont repris par `workflows/sync_contacts.py` : un contact non
+professionnel et non public est refusé (K-01), et un `OPT_OUT` insère
+immédiatement un `contact_event` que le déclencheur transforme en statut
+`OPT_OUT` pour la fiche et tous ses contacts. Une fiche déjà `OPT_OUT` force
+tout contact entrant à `OPT_OUT`.
+
+Les preuves acceptées sont importées par `workflows/sync_evidence.py` : la
+source et sa consultation datée sont écrites d'abord, puis le fait typé est
+inséré avec une identité stable (`005_evidence.sql`). Une preuve `PENDING`,
+`REJECTED` ou `CONFLICT` n'entre pas dans le score. Une preuve déjà importée ne
+peut pas changer de valeur : la correction est une nouvelle preuve.
+
+Les publicités brutes sont importées par `workflows/sync_ads.py` tant qu'elles
+sont `DRAFT` ou `SUBMITTED`. Le service contrôle les champs obligatoires,
+calcule les chiffres INN/OGRN (`processing/russian_ids.py`), résout le support
+plateforme et les liens créateur, puis insère la publicité. Une publicité déjà
+`IMPORTED` n'est jamais réécrite : une correction est une nouvelle ligne.
+
+Le rapprochement acheteur est écrit par `workflows/match_ads.py` : il garde
+l'INN et l'OGRN dont le chiffre de contrôle est valide, cherche un acheteur
+unique, le crée depuis le nom d'annonceur s'il manque, et refuse de choisir
+quand deux acheteurs correspondent. Une publicité n'est marquée `IMPORTED`
+qu'une fois le lien acheteur disponible dans Baserow.
 
 ### 6.4 Conflits
 
@@ -796,10 +835,23 @@ Champs facultatifs couverts : `agency`, `revenue_band`, `competitors`,
 |---|---|
 | `db/baserow/schema.json` | schéma Baserow déclaratif, 8 tables, types, options et propriétaires |
 | `db/baserow/apply_schema.py` | seeder Baserow idempotent, mode `--dry-run` |
-| `integrations/baserow.py` | client HTTP des opérations de schéma Baserow |
+| `integrations/baserow.py` | client HTTP des opérations de schéma et de lignes Baserow |
+| `integrations/sync_store.py` | lecture et écriture de la file, des correspondances, des fiches et des événements entrants |
 | `db/postgres/001_schema.sql` | DDL PostgreSQL, contraintes, triggers, vues de contrat |
 | `db/postgres/002_seed_reference.sql` | critères 1.4 actifs, 1.3 et 1.2 conservés en historique, et référentiel plateformes daté |
 | `db/postgres/003_engagement.sql` | migration 1.3 vers 1.4 : champs, échantillon, résultat de mesure, vue |
+| `db/postgres/004_sync.sql` | migration de synchronisation : location, index d'unicité, déclencheurs |
+| `db/postgres/005_evidence.sql` | identité stable d'un fait importé depuis une preuve |
+| `processing/baserow_mapping.py` | traduction pure d'une fiche PostgreSQL vers les champs Baserow |
+| `processing/review_actions.py` | règles pures des actions de revue Baserow → PostgreSQL |
+| `processing/fact_values.py` | typage et contrôle d'une valeur de preuve |
+| `processing/russian_ids.py` | contrôle des chiffres INN et OGRN |
+| `workflows/sync_push.py` | service de sortie PostgreSQL → Baserow et sa commande |
+| `workflows/sync_pull.py` | service d'entrée Baserow → PostgreSQL et sa commande |
+| `workflows/sync_contacts.py` | service d'entrée des contacts et de l'opt-out immédiat |
+| `workflows/sync_evidence.py` | service d'entrée des preuves acceptées |
+| `workflows/sync_ads.py` | service d'entrée des publicités étiquetées |
+| `workflows/match_ads.py` | rapprochement INN/OGRN des publicités vers les acheteurs |
 | `db/postgres/smoke_test.sql` | test manuel qui insère, vérifie les vues et annule tout |
 | `tests/test_baserow_schema.py` | contrôles hors ligne du schéma Baserow |
 | `tests/test_baserow_apply.py` | tests du seeder avec une API Baserow simulée |

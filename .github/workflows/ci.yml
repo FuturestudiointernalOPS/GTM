@@ -25,3 +25,30 @@ jobs:
         run: ruff format --check .
       - name: Tests
         run: pytest
+
+  postgres:
+    runs-on: ubuntu-latest
+    env:
+      # Ephemeral password for this runner only: the container listens on
+      # 127.0.0.1 and is removed at the end of the job.
+      POSTGRES_PASSWORD: gtm-ci-password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Start PostgreSQL
+        run: ./db/postgres/container.sh up
+      - name: Replay the smoke test
+        run: ./db/postgres/container.sh check
+      - name: Live database tests
+        run: ./db/postgres/container.sh test
+      - name: Stop PostgreSQL
+        if: always()
+        run: ./db/postgres/container.sh down

@@ -2,7 +2,7 @@
 
 Why a dedicated client: the same tables and fields must be created the same way
 on every environment, and a schema error must stop with a readable message. This
-module only handles the schema (tables and fields), never row data.
+module only handles the schema (tables, fields and views), never row data.
 
 The token is never logged and never included in an error message.
 """
@@ -139,6 +139,142 @@ class BaserowClient:
             json=payload,
         )
 
+    # -- views -------------------------------------------------------------
+
+    def list_views(self, table_id: int, *, include: str | None = None) -> list[dict]:
+        """Return every view of a table, optionally with filters included.
+
+        Pass ``include="filters"`` to receive each view's filters in the same
+        answer, which avoids one request per view.
+        """
+        params = {"include": include} if include else None
+        return _as_list(
+            self._request_with_retry(
+                "GET", f"/database/views/table/{table_id}/", params=params
+            )
+        )
+
+    def create_view(
+        self,
+        table_id: int,
+        name: str,
+        view_type: str = "grid",
+        filter_type: str | None = None,
+    ) -> dict:
+        """Create one view and return Baserow's description of it.
+
+        No automatic retry: a lost response after a successful creation would
+        create a duplicate view. Rerun the idempotent seeder instead.
+        """
+        payload: dict = {"name": name, "type": view_type}
+        if filter_type:
+            payload["filter_type"] = filter_type
+        return self._request(
+            "POST",
+            f"/database/views/table/{table_id}/",
+            json=payload,
+        )
+
+    def create_view_filter(self, view_id: int, payload: dict) -> dict:
+        """Add one filter to a view.
+
+        No automatic retry, for the same reason as ``create_view``. The seeder
+        compares existing filters before adding a missing one.
+        """
+        return self._request(
+            "POST",
+            f"/database/views/{view_id}/filters/",
+            json=payload,
+        )
+
+    # -- rows --------------------------------------------------------------
+
+    def list_rows(
+        self,
+        table_id: int,
+        *,
+        size: int = 200,
+        page: int = 1,
+        filters: dict[str, object] | None = None,
+    ) -> list[dict]:
+        """Return one page of rows, addressed by field name.
+
+        Baserow caps the page size; use ``iter_rows`` when every row is
+        needed, or ``find_row`` when one row is enough.
+        """
+        params = self._row_params(size=size, page=page, filters=filters)
+        return _as_list(
+            self._request_with_retry(
+                "GET", f"/database/rows/table/{table_id}/", params=params
+            )
+        )
+
+    def iter_rows(
+        self,
+        table_id: int,
+        *,
+        size: int = 200,
+        filters: dict[str, object] | None = None,
+        max_pages: int = 50,
+    ):
+        """Yield every row, one Baserow page at a time.
+
+        ``max_pages`` is a safety cap: a service must not loop forever because
+        a server keeps answering with a next-page link.
+        """
+        page = 1
+        while page <= max(1, max_pages):
+            payload = self._request_with_retry(
+                "GET",
+                f"/database/rows/table/{table_id}/",
+                params=self._row_params(size=size, page=page, filters=filters),
+            )
+            for row in _as_list(payload):
+                yield row
+            if not isinstance(payload, dict) or not payload.get("next"):
+                break
+            page += 1
+
+    @staticmethod
+    def _row_params(*, size: int, page: int, filters: dict[str, object] | None):
+        params: dict[str, object] = {
+            "user_field_names": "true",
+            "size": size,
+            "page": page,
+        }
+        if filters:
+            for name, value in filters.items():
+                params[f"filter__{name}__equal"] = value
+        return params
+
+    def find_row(self, table_id: int, field: str, value: object) -> dict | None:
+        """Return the first row whose field equals ``value``, or ``None``."""
+        rows = self.list_rows(table_id, size=1, filters={field: value})
+        return rows[0] if rows else None
+
+    def create_row(self, table_id: int, fields: dict) -> dict:
+        """Create one row and return Baserow's description of it.
+
+        No automatic retry: a lost response after a successful creation would
+        create a second row. The synchronization service resolves a row by its
+        business key before creating one, so a replay stays safe.
+        """
+        return self._request(
+            "POST",
+            f"/database/rows/table/{table_id}/",
+            params={"user_field_names": "true"},
+            json=fields,
+        )
+
+    def update_row(self, table_id: int, row_id: int, fields: dict) -> dict | None:
+        """Update one row, addressed by field name."""
+        return self._request_with_retry(
+            "PATCH",
+            f"/database/rows/table/{table_id}/{row_id}/",
+            params={"user_field_names": "true"},
+            json=fields,
+        )
+
     # -- transport ---------------------------------------------------------
 
     @retry(
@@ -179,6 +315,33 @@ class BaserowClient:
             return response.json()
         except ValueError as error:
             raise BaserowError("Baserow answered with unreadable content") from error
+
+
+class BaserowRowClient(BaserowClient):
+    """Client for row data, using the durable database token when it is set.
+
+    The schema endpoints need a short-lived JWT. A background synchronization
+    service cannot refresh one every hour, so it reads a database token from
+    its own setting. Keeping the two clients separate prevents a schema run
+    from silently using the wrong credential.
+    """
+
+    def __init__(
+        self,
+        base_url: str | None = None,
+        token: str | None = None,
+        auth_scheme: str | None = None,
+    ):
+        row_token = token or settings.BASEROW_ROW_TOKEN
+        if row_token:
+            token = row_token
+            if auth_scheme is None:
+                auth_scheme = settings.BASEROW_ROW_AUTH_SCHEME or "Token"
+        super().__init__(
+            base_url=base_url,
+            token=token,
+            auth_scheme=auth_scheme,
+        )
 
 
 def _description(response: httpx.Response) -> str:

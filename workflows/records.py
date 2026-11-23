@@ -55,7 +55,7 @@ class CreatorIdentity:
 
 @dataclass(frozen=True)
 class BuyerIdentity:
-    domain: str
+    domain: str | None = None
     tax_id: str | None = None
     legal_name: str | None = None
 

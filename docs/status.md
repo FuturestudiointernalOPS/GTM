@@ -4,7 +4,7 @@ Ce document donne une vue d'ensemble ; il ne remplace aucune règle. En cas de
 doute, `docs/scope.md` fait foi pour les critères, `docs/verification.md` pour
 les procédures, et `docs/data-model.md` pour les champs.
 
-Dernière revue : 2026-11-17.
+Dernière revue : 2026-11-20.
 
 ## 1. Ce qui est exécutable
 
@@ -15,7 +15,14 @@ Dernière revue : 2026-11-17.
 | Preuves et citations verbatim | prêt, testé hors ligne | `processing/evidence.py`, `workflows/record_loop.py` |
 | Échantillon d'engagement | prêt, acteur fourni par l'opérateur | `integrations/engagement_collectors.py`, `workflows/engagement_step.py` |
 | Score déterministe 1.4 | prêt, testé | `processing/scoring.py` |
-| Fiches, mesures, scores, décisions en PostgreSQL | prêt, testé avec une connexion simulée | `integrations/record_store.py`, `integrations/postgres.py` |
+| Fiches, mesures, scores, décisions en PostgreSQL | prêt, testé avec une connexion simulée et contre le conteneur PostgreSQL | `integrations/record_store.py`, `integrations/postgres.py` |
+| Synchronisation PostgreSQL → Baserow (fiches, plateformes) | lot 1 prêt, testé hors ligne et contre le conteneur PostgreSQL | `workflows/sync_push.py`, `processing/baserow_mapping.py` |
+| Actions humaines Baserow → PostgreSQL (revue, opt-out) | lot 2 prêt, testé hors ligne et contre le conteneur PostgreSQL | `workflows/sync_pull.py`, `processing/review_actions.py` |
+| Contacts Baserow → PostgreSQL | lot 3a prêt, testé hors ligne et contre le conteneur PostgreSQL | `workflows/sync_contacts.py` |
+| Preuves Baserow → PostgreSQL | lot 3b prêt, testé hors ligne et contre le conteneur PostgreSQL | `workflows/sync_evidence.py`, `processing/fact_values.py` |
+| Publicités Baserow → PostgreSQL | lot 3c prêt, testé hors ligne et contre le conteneur PostgreSQL | `workflows/sync_ads.py`, `processing/russian_ids.py` |
+| Rapprochement acheteur des publicités | lot 3d prêt, testé hors ligne et contre le conteneur PostgreSQL | `workflows/match_ads.py` |
+| Conteneur PostgreSQL local | fourni et validé : schéma 1.4, smoke test, tests d'intégration | `db/postgres/container.sh` |
 | Contrôle d'éligibilité | logique prête et branchée au run ; les contrôles eux-mêmes restent une procédure humaine | `processing/eligibility.py`, `workflows/eligibility_step.py` |
 | Commande de run | disponible | `python -m main` |
 | Commande de démo (recherche, listes, brouillon) | disponible | `python -m workflows.demo` |
@@ -30,8 +37,11 @@ Dernière revue : 2026-11-17.
 - **Éligibilité** : le run applique la table de décision et écrit le verdict,
   mais il ne réalise aucun contrôle. La liste des vérifications est fournie par
   le fichier `--verification`, produit par la procédure humaine.
-- **Synchronisation Baserow ↔ PostgreSQL** : les tables `sync_outbox` et
-  `baserow_event` existent, le service de synchronisation n'est pas écrit.
+- **Synchronisation Baserow ↔ PostgreSQL** : la sortie PostgreSQL → Baserow
+  est écrite pour les fiches et les plateformes. L'entrée Baserow → PostgreSQL
+  est écrite pour les actions de revue, les contacts, les preuves acceptées, les
+  publicités brutes et le rapprochement acheteur. L'exécution réelle contre une
+  instance Baserow reste à valider.
 - **Calibration** : les seuils Rutube et YouTube sont provisoires ; le cas
   VK Video Live seul reste en engagement inconnu.
 
@@ -42,9 +52,6 @@ Dernière revue : 2026-11-17.
 - Génération et envoi du démarchage : le prompt et le fournisseur existent, le
   parcours d'envoi n'est pas branché.
 - Journal de coûts et alertes : non implémentés.
-- Exécution continue des tests d'intégration : absente. Les tests existent
-  (`tests/test_postgres_live.py`) mais restent facultatifs, car ils exigent une
-  base réelle (`GTM_TEST_DATABASE_URL`) et ne sont pas lancés par la CI.
 
 ## 4. Décisions ouvertes
 
@@ -73,8 +80,31 @@ pytest
 pytest --cov
 ```
 
-Les tests hors ligne ne touchent aucun service. Pour la base réelle :
+Les tests hors ligne ne touchent aucun service. Pour la base réelle, le
+conteneur fournit la base et lance les tests :
+
+```bash
+./db/postgres/container.sh up
+./db/postgres/container.sh check
+./db/postgres/container.sh test
+```
+
+Sur une base déjà préparée :
 
 ```bash
 GTM_TEST_DATABASE_URL=postgresql://user:pass@host/gtm pytest tests/test_postgres_live.py
 ```
+
+Pour vérifier les deux sens sans attendre une tâche planifiée, avec
+l'interpréteur du projet :
+
+```bash
+.venv/bin/python -m workflows.sync_push --limit 50
+.venv/bin/python -m workflows.sync_pull
+.venv/bin/python -m workflows.sync_contacts
+.venv/bin/python -m workflows.sync_evidence
+.venv/bin/python -m workflows.sync_ads
+.venv/bin/python -m workflows.match_ads
+```
+
+La CI exécute `up`, `check` et `test` dans le job `postgres`.
