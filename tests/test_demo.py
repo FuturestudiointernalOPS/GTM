@@ -150,6 +150,51 @@ def test_a_directory_page_is_not_chosen_for_the_draft(monkeypatch):
     )
 
 
+def test_an_unreadable_page_falls_back_to_the_next_profile(monkeypatch):
+    _install(
+        monkeypatch,
+        creators=[
+            _page("https://twitch.tv/unreadable", "Unreadable", platform="Twitch"),
+            _page("https://vk.com/readable", "Readable", platform="VK Video"),
+        ],
+        companies=[],
+    )
+
+    def read(url, *, max_chars):
+        if "unreadable" in url:
+            return webreader.PageRead(url=url, status=200, title="Unreadable")
+        return webreader.PageRead(
+            url=url,
+            status=200,
+            title="Readable",
+            text="Я стример Minecraft и ищу партнёров.",
+        )
+
+    report = demo.build_demo(week=45, provider=FakeProvider(), read=read)
+
+    assert report["outreach"]["recipient"]["url"] == "https://vk.com/readable"
+    assert report["outreach"]["draft"]["message"].startswith("Здравствуйте")
+
+
+def test_no_readable_page_leaves_the_draft_empty(monkeypatch):
+    _install(
+        monkeypatch,
+        creators=[
+            _page("https://twitch.tv/unreadable", "Unreadable", platform="Twitch")
+        ],
+        companies=[],
+    )
+
+    report = demo.build_demo(
+        week=45,
+        provider=FakeProvider(),
+        read=lambda url, *, max_chars: webreader.PageRead(url=url),
+    )
+
+    assert report["outreach"]["draft"] is None
+    assert "sans texte lisible" in report["outreach"]["error"]
+
+
 def test_render_text_shows_the_demo_sections(monkeypatch):
     _install(
         monkeypatch,
@@ -168,6 +213,7 @@ def test_render_text_shows_the_demo_sections(monkeypatch):
     assert "Studio" in text
     assert "Здравствуйте" in text
     assert "Non demandé" in text
+    assert "Non demandé (ajoutez --send-draft)" in text
 
 
 def test_render_text_reports_an_empty_draft():
@@ -191,3 +237,75 @@ def test_render_text_reports_an_empty_draft():
     assert "Aucune page." in text
     assert "Aucun destinataire." in text
     assert "Attention : aucune page trouvée" in text
+
+
+def test_validation_message_contains_the_target_and_the_draft():
+    outreach = {
+        "recipient": {
+            "title": "Streamer",
+            "url": "https://twitch.tv/streamer",
+            "platform": "Twitch",
+        },
+        "draft": {
+            "channel": "telegram",
+            "message": "Здравствуйте!",
+            "personalisation": "Я — Платон",
+        },
+        "error": None,
+    }
+
+    text = demo._validation_message(outreach)
+
+    assert "BROUILLON À VALIDER" in text
+    assert "Cible : Streamer (Twitch)" in text
+    assert "Page : https://twitch.tv/streamer" in text
+    assert "Élément cité : Я — Платон" in text
+    assert "Здравствуйте!" in text
+
+
+def test_validation_message_is_none_without_a_draft():
+    assert demo._validation_message({"recipient": None, "draft": None}) is None
+    assert (
+        demo._validation_message(
+            {"recipient": {"title": "Streamer"}, "draft": {"message": "  "}}
+        )
+        is None
+    )
+
+
+def test_main_sends_the_draft_only_when_asked(monkeypatch, capsys):
+    report = {
+        "week": 45,
+        "queries": [],
+        "creators": [],
+        "companies": [],
+        "telegram_notification": "Résumé",
+        "outreach": {
+            "recipient": {
+                "title": "Streamer",
+                "url": "https://twitch.tv/streamer",
+                "platform": "Twitch",
+            },
+            "draft": {
+                "channel": "telegram",
+                "message": "Здравствуйте!",
+                "personalisation": "Я — Платон",
+            },
+            "error": None,
+        },
+    }
+    sent = []
+    monkeypatch.setattr(demo, "build_demo", lambda **options: dict(report))
+    monkeypatch.setattr(
+        demo.telegram,
+        "send_message_safely",
+        lambda text: sent.append(text) or True,
+    )
+
+    code = demo.main(["--send-draft"])
+    output = capsys.readouterr().out
+
+    assert code == 0
+    assert len(sent) == 1
+    assert "BROUILLON À VALIDER" in sent[0]
+    assert "Brouillon envoyé" in output
