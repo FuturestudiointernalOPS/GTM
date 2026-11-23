@@ -80,6 +80,11 @@ validation humaine. `--send-telegram` envoie uniquement le résumé au chat
 configuré ; `--recipient buyer` prépare le brouillon pour une entreprise,
 `--no-ai` s'arrête après la recherche et `--json` produit la sortie machine.
 
+`--send-draft` envoie le brouillon au chat configuré pour validation, avec la
+cible, la page, l'élément cité et le message proposé. Le bot ne lit pas les
+réponses : l'accord et l'envoi à la cible restent manuels. Le brouillon n'est
+jamais expédié à la cible par le programme.
+
 Coût indicatif : deux recherches Exa, une lecture de page et un appel au modèle.
 Les requêtes acheteur passent par Exa dans leur forme naturelle pour éviter les
 liens de redirection Google renvoyés par SerpApi.
