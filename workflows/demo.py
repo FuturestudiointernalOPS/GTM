@@ -36,11 +36,12 @@ import textwrap
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
-from urllib.parse import urlsplit
+
 
 from ai import get_ai_provider
 from integrations import telegram, webreader
 from workflows import buyer_hunt, creator_hunt, query_pool, telegram_report
+from workflows.records import creator_identity
 
 log = logging.getLogger("gtm.demo")
 
@@ -98,7 +99,7 @@ def build_demo(
     creators = [
         _as_creator_page(page)
         for page in creator_pages
-        if _looks_like_profile(page["url"])
+        if creator_identity(page["url"]) is not None
     ]
     companies = [_as_company_page(page) for page in buyer_pages]
 
@@ -300,29 +301,6 @@ def _target_order(creators: list[dict], companies: list[dict], recipient: str):
     return creators + companies if recipient == "creator" else companies + creators
 
 
-def _looks_like_profile(url: str) -> bool:
-    """True for a page that can be a creator profile, not a listing or a video."""
-    parts = urlsplit(url)
-    path = parts.path.strip("/")
-    if not path:
-        return False
-    first = path.split("/", 1)[0].lower()
-    return not (
-        first.startswith(("clip", "playlist", "shorts", "video", "watch"))
-        or first
-        in {
-            "category",
-            "directory",
-            "login",
-            "results",
-            "search",
-            "settings",
-            "signup",
-            "tags",
-        }
-    )
-
-
 def _draft_for_first_readable(targets: list[dict], provider, read) -> dict:
     """Try a few candidates and keep the first draft that is not empty.
 
@@ -430,7 +408,9 @@ def _notification(
     )
 
     drafts: tuple[telegram_report.Draft, ...] = ()
-    blockers: tuple[str, ...] = ()
+    blockers: list[str] = [
+        "Demo: scores and contacts come from the weekly run, not this preview."
+    ]
     target = outreach.get("recipient")
     message = ((outreach.get("draft") or {}).get("message") or "").strip()
     if target and message:
@@ -442,7 +422,7 @@ def _notification(
             ),
         )
     if outreach.get("error"):
-        blockers = (f"Draft: {outreach['error']}",)
+        blockers.append(f"Draft: {outreach['error']}")
 
     now = datetime.now(UTC)
     report = telegram_report.WeeklyReport(
@@ -451,7 +431,7 @@ def _notification(
         funnel=funnel,
         creators=telegram_report.candidates_from_pages(creators),
         buyers=telegram_report.candidates_from_pages(companies),
-        blockers=blockers,
+        blockers=tuple(blockers),
         drafts=drafts,
         demo=True,
         draft_note=("The draft text is shown in the console; it is not sent.",),

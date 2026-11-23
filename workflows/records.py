@@ -31,7 +31,7 @@ from workflows.record_loop import Candidate
 _VK_NON_PROFILE = re.compile(r"^(video|wall|clip|clips|shorts|feed|search|away)[-_]")
 
 _NOT_A_PROFILE = {
-    "t.me": {"s", "joinchat", "addstickers", "proxy", "share"},
+    "t.me": {"joinchat", "addstickers", "proxy", "share", "c"},
     "twitch.tv": {"directory", "videos", "settings", "p"},
 }
 
@@ -168,6 +168,16 @@ def _handle(host: str, segments: list[str]) -> str | None:
         return None
 
     first = segments[0]
+
+    # Telegram's public web preview is ``t.me/s/<channel>``; it is the same
+    # channel as ``t.me/<channel>``, not a different profile.
+    if host in {"t.me", "telegram.me"}:
+        if first == "s":
+            return segments[1].casefold() if len(segments) > 1 else None
+        if first in _NOT_A_PROFILE["t.me"]:
+            return None
+        return first.casefold()
+
     if first in _NOT_A_PROFILE.get(host, set()):
         return None
     if host in {"vk.com", "vkvideo.ru"} and _VK_NON_PROFILE.match(first):

@@ -29,6 +29,7 @@ _PLATFORMS = {
     "youtube.com": "YouTube",
     "youtu.be": "YouTube",
     "t.me": "Telegram",
+    "telegram.me": "Telegram",
     "rutube.ru": "Rutube",
     "kick.com": "Kick",
     "tiktok.com": "TikTok",
@@ -55,6 +56,8 @@ class Candidate:
     detail: str | None = None  # game, or sector for a buyer
     score: int | None = None
     why: str | None = None  # what made the score, one short sentence
+    contacts: tuple[str, ...] = ()
+    programs: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -255,6 +258,10 @@ def _top(title: str, prefix: str, items: Sequence[Candidate]) -> str:
             lines.append(f"   {about}")
         lines.append(f"   💬 {item.why}" if item.why else "   💬 score: " + MISSING)
         lines.append(f"   🔗 {readable_url(item.url)}")
+        for contact in item.contacts:
+            lines.append(f"   ✉️ {contact}")
+        for program in item.programs:
+            lines.append(f"   🎯 {program}")
         blocks.append("\n".join(lines))
     hidden = len(items) - len(ranked)
     if hidden > 0:
@@ -295,7 +302,11 @@ def _handle(url: str) -> str | None:
     if not path:
         return None
     first = path[0]
-    if host in ("twitch.tv", "live.vkvideo.ru", "kick.com", "t.me"):
+    if host in ("t.me", "telegram.me"):
+        if first == "s" and len(path) > 1:
+            return path[1]
+        return first
+    if host in ("twitch.tv", "live.vkvideo.ru", "kick.com"):
         return first
     if host in ("youtube.com", "tiktok.com") and first.startswith("@"):
         return first
