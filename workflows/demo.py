@@ -35,11 +35,12 @@ import sys
 import textwrap
 from collections.abc import Callable
 from dataclasses import replace
+from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
 from ai import get_ai_provider
 from integrations import telegram, webreader
-from workflows import buyer_hunt, creator_hunt, query_pool
+from workflows import buyer_hunt, creator_hunt, query_pool, telegram_report
 
 log = logging.getLogger("gtm.demo")
 
@@ -56,9 +57,6 @@ PREFERRED_BUYER_IDS = (
 # The model only needs enough context to quote one element; the whole page is
 # not useful and would make the demonstration slower.
 MAX_PAGE_CHARS = 1500
-
-# The notification stays short: it is a summary, not the full result set.
-MAX_LINES_PER_LIST = 5
 
 # A demonstration does not need to try every page: three readable candidates are
 # enough, and each failed attempt can cost a page read.
@@ -113,8 +111,6 @@ def build_demo(
             planned_service=planned_buyer.service,
         ),
     ]
-    notification = _notification(week, runs, creators, companies)
-
     outreach = {"recipient": None, "draft": None, "error": None}
     targets = _target_order(creators, companies, recipient)
     if not targets:
@@ -126,6 +122,7 @@ def build_demo(
             provider = get_ai_provider()
         outreach = _draft_for_first_readable(targets, provider, read)
 
+    notification = _notification(runs, creators, companies, outreach)
     return {
         "week": week,
         "queries": runs,
@@ -157,9 +154,14 @@ def main(argv: list[str] | None = None) -> int:
     sent = False
     send_error = None
     if args.send_telegram:
-        sent = telegram.send_message_safely(report["telegram_notification"])
+        # A long summary is cut between sections: Telegram refuses > 4096 chars.
+        parts = telegram_report.split(report["telegram_notification"])
+        sent = all([telegram.send_message_safely(part) for part in parts])
         if not sent:
             send_error = "Telegram n'a pas accepté le message (voir le log)"
+
+    report["telegram_sent"] = sent
+    report["telegram_error"] = send_error
 
     draft_sent = False
     draft_error = None
@@ -172,8 +174,6 @@ def main(argv: list[str] | None = None) -> int:
             if not draft_sent:
                 draft_error = "Telegram n'a pas accepté le brouillon (voir le log)"
 
-    report["telegram_sent"] = sent
-    report["telegram_error"] = send_error
     report["draft_sent"] = draft_sent
     report["draft_error"] = draft_error
     if args.json:
@@ -406,39 +406,66 @@ def _validation_message(outreach: dict) -> str | None:
 
 
 def _notification(
-    week: int,
     runs: list[dict],
     creators: list[dict],
     companies: list[dict],
+    outreach: dict,
 ) -> str:
-    """Build the short summary an operator can send to their own chat."""
-    lines = [f"Démo GTM — semaine {week}"]
-    for run in runs:
-        lines.append(
-            f"Recherche {run['id']} : {run['pages_found']} page(s) — {run['text']}"
+    """Build the Telegram summary, in the Monday report layout.
+
+    The demo has no score, spend or sanctions step: those parts say "not
+    measured yet" instead of showing invented numbers.
+    """
+    # Count what is listed below (profiles only), not every page the search hit.
+    shown = {
+        "creator": ("Creators found", len(creators)),
+        "buyer": ("Companies found", len(companies)),
+    }
+    funnel = tuple(
+        telegram_report.Target(
+            *shown.get(run["side"], (run["side"], run["pages_found"])),
+            note=f"search: {run['text']}",
         )
-    lines.append("")
-    lines.append(f"Créateurs trouvés : {len(creators)}")
-    lines.extend(_bullets(creators, with_platform=True))
-    lines.append(f"Entreprises trouvées : {len(companies)}")
-    lines.extend(_bullets(companies, with_platform=False))
-    lines.append("")
-    lines.append(
-        "Le brouillon de message est affiché dans la console ; il n'est pas envoyé."
+        for run in runs
     )
-    return "\n".join(lines)
 
-
-def _bullets(pages: list[dict], *, with_platform: bool) -> list[str]:
-    lines = []
-    for page in pages[:MAX_LINES_PER_LIST]:
-        prefix = (
-            f"[{page['platform']}] " if with_platform and page.get("platform") else ""
+    drafts: tuple[telegram_report.Draft, ...] = ()
+    blockers: tuple[str, ...] = ()
+    target = outreach.get("recipient")
+    message = ((outreach.get("draft") or {}).get("message") or "").strip()
+    if target and message:
+        drafts = (
+            telegram_report.Draft(
+                _ref(target, creators, companies),
+                telegram_report.display_name(target.get("title"), target["url"]),
+                (outreach["draft"].get("channel") or "message") + " (RU)",
+            ),
         )
-        lines.append(f"- {prefix}{page['title']} — {page['url']}")
-    if len(pages) > MAX_LINES_PER_LIST:
-        lines.append(f"- … et {len(pages) - MAX_LINES_PER_LIST} autre(s)")
-    return lines
+    if outreach.get("error"):
+        blockers = (f"Draft: {outreach['error']}",)
+
+    now = datetime.now(UTC)
+    report = telegram_report.WeeklyReport(
+        run_date=now.date(),
+        finished_at=f"{now:%H:%M} UTC",
+        funnel=funnel,
+        creators=telegram_report.candidates_from_pages(creators),
+        buyers=telegram_report.candidates_from_pages(companies),
+        blockers=blockers,
+        drafts=drafts,
+        demo=True,
+        draft_note=("The draft text is shown in the console; it is not sent.",),
+    )
+    return telegram_report.render(report)
+
+
+def _ref(target: dict, creators: list[dict], companies: list[dict]) -> str:
+    """C1, B2...: the draft's place in the lists shown above it."""
+    for prefix, pages in (("C", creators), ("B", companies)):
+        for index, page in enumerate(pages, start=1):
+            if page["url"] == target["url"]:
+                return f"{prefix}{index}"
+    return "—"
 
 
 def render_text(report: dict) -> str:

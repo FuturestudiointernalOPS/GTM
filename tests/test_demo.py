@@ -94,8 +94,12 @@ def test_build_demo_lists_both_sides_and_drafts_a_message(monkeypatch):
     assert report["outreach"]["draft"]["message"].startswith("Здравствуйте")
     assert report["outreach"]["recipient"]["url"] == "https://twitch.tv/streamer"
     assert provider.payload["public_page_excerpt"].startswith("Мы издатель игр")
-    assert "Créateurs trouvés : 1" in report["telegram_notification"]
-    assert "Entreprises trouvées : 1" in report["telegram_notification"]
+    notification = report["telegram_notification"]
+    assert "Creators found: 1" in notification
+    assert "Companies found: 1" in notification
+    assert "C1 · streamer" in notification
+    assert "B1 · Studio" in notification
+    assert "1 · C1 streamer — telegram (RU)" in notification
 
 
 def test_build_demo_can_skip_the_model(monkeypatch):
@@ -237,6 +241,35 @@ def test_render_text_reports_an_empty_draft():
     assert "Aucune page." in text
     assert "Aucun destinataire." in text
     assert "Attention : aucune page trouvée" in text
+
+
+def test_a_failed_draft_is_listed_as_a_blocker(monkeypatch):
+    _install(monkeypatch, creators=[], companies=[])
+
+    report = demo.build_demo(week=45, provider=FakeProvider(), read=_read)
+
+    assert "Draft: aucune page trouvée" in report["telegram_notification"]
+    assert "No draft this week." in report["telegram_notification"]
+
+
+def test_a_long_summary_is_sent_in_several_messages(monkeypatch):
+    long_text = "\n\n".join(["x" * 3000, "y" * 3000])
+    report = {
+        "week": 45,
+        "queries": [],
+        "creators": [],
+        "companies": [],
+        "telegram_notification": long_text,
+        "outreach": {"recipient": None, "draft": None, "error": None},
+    }
+    sent = []
+    monkeypatch.setattr(demo, "build_demo", lambda **options: dict(report))
+    monkeypatch.setattr(
+        demo.telegram, "send_message_safely", lambda text: sent.append(text) or True
+    )
+
+    assert demo.main(["--send-telegram"]) == 0
+    assert sent == ["x" * 3000, "y" * 3000]
 
 
 def test_validation_message_contains_the_target_and_the_draft():
