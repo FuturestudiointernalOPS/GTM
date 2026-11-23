@@ -13,7 +13,9 @@ from workflows import sync_push
 CREATORS = 11
 BUYERS = 12
 PLATFORMS = 13
+CONTACTS = 14
 RECORD_ID = "9c8f4b1e-2a3d-4e5f-8a9b-0c1d2e3f4a5b"
+CONTACT_ID = "1a2b3c4d-5e6f-4a8b-9c0d-1e2f3a4b5c6d"
 
 
 def creator_fiche(**overrides):
@@ -43,6 +45,25 @@ def buyer_fiche(**overrides):
         "tax_id_type": "INN",
         "assigned_to": "analyst",
         "notes": "human note",
+    }
+    values.update(overrides)
+    return values
+
+
+def contact_row(**overrides):
+    values = {
+        "id": CONTACT_ID,
+        "record_id": RECORD_ID,
+        "role": "MARKETING",
+        "person_name": None,
+        "channel_type": "EMAIL",
+        "channel_value": "press@studio.ru",
+        "is_professional_public": True,
+        "source_url": "https://vk.com/player",
+        "source_date": "2026-11-23",
+        "verification_status": "PENDING",
+        "status": "ACTIVE",
+        "notes": "presse | citation: По вопросам рекламы",
     }
     values.update(overrides)
     return values
@@ -107,6 +128,10 @@ class FakeCursor:
             self._set_rows(state.platforms)
             return
 
+        if "FROM contact" in statement and "WHERE record_id" in statement:
+            self._set_rows(state.contacts.get(str(params[0]), []))
+            return
+
         if "WITH claimed AS" in statement:
             limit = int(params[0])
             claimed = state.claim(limit)
@@ -146,11 +171,14 @@ class FakeCursor:
 
 
 class FakeConnection:
-    def __init__(self, outbox, *, fiches=None, platforms=None, links=None):
+    def __init__(
+        self, outbox, *, fiches=None, platforms=None, links=None, contacts=None
+    ):
         self.outbox = [dict(item) for item in outbox]
         self.fiches = dict(fiches or {})
         self.platforms = list(platforms or [])
         self.links = dict(links or {})
+        self.contacts = dict(contacts or {})
         self.processed = set()
         self.commits = 0
         self.rollbacks = 0
@@ -187,6 +215,7 @@ class FakeRowClient:
             {"id": CREATORS, "name": "Createurs"},
             {"id": BUYERS, "name": "Acheteurs"},
             {"id": PLATFORMS, "name": "Plateformes"},
+            {"id": CONTACTS, "name": "Contacts"},
         ]
         self.rows = {}
         self.created = []
@@ -209,6 +238,8 @@ class FakeRowClient:
             self.rows[(table_id, "record_id", str(fields["record_id"]))] = row
         if "platform_id" in fields:
             self.rows[(table_id, "platform_id", str(fields["platform_id"]))] = row
+        if "contact_id" in fields:
+            self.rows[(table_id, "contact_id", str(fields["contact_id"]))] = row
         self.created.append((table_id, dict(fields), row["id"]))
         return row
 
@@ -349,6 +380,54 @@ def test_an_unsupported_entity_is_refused_with_a_readable_error():
     assert not report.ok
     assert report.failed[0][0] == f"CONTACT:{RECORD_ID}"
     assert "unsupported entity type" in report.failed[0][1]
+
+
+def test_a_discovered_contact_is_created_and_linked_to_the_fiche():
+    connection = FakeConnection(
+        [outbox_item()],
+        fiches={("CREATOR", RECORD_ID): creator_fiche()},
+        platforms=[platform_row()],
+        contacts={RECORD_ID: [contact_row()]},
+    )
+    client = FakeRowClient()
+
+    report = sync_push.push_outbox(connection, client, database_id=1, contacts=CONTACTS)
+
+    assert report.ok
+    creator_call = [call for call in client.created if call[0] == CREATORS][0]
+    contact_call = [call for call in client.created if call[0] == CONTACTS][0]
+    created = contact_call[1]
+    assert created["creator"] == [creator_call[2]]
+    assert created["channel_value"] == "press@studio.ru"
+    assert created["role"] == "MARKETING"
+    assert created["record_type"] == "CREATOR"
+    assert created["record_reference"] == "CR-000001"
+    assert created["contact_id"] == CONTACT_ID
+    assert f"CONTACT:{CONTACT_ID}" in report.pushed
+    assert ("CONTACT", CONTACT_ID, CONTACTS) in connection.links
+
+
+def test_an_existing_contact_is_not_overwritten():
+    metadata = baserow_mapping.contact_metadata(contact_row())
+    connection = FakeConnection(
+        [outbox_item()],
+        fiches={("CREATOR", RECORD_ID): creator_fiche()},
+        platforms=[platform_row()],
+        contacts={RECORD_ID: [contact_row()]},
+        links={("CONTACT", CONTACT_ID, CONTACTS): (555, "old-fingerprint")},
+    )
+    client = FakeRowClient()
+
+    report = sync_push.push_outbox(connection, client, database_id=1, contacts=CONTACTS)
+
+    assert report.ok
+    updates = [call for call in client.updated if call[0] == CONTACTS]
+    assert updates
+    assert updates[0][1] == 555
+    assert "channel_value" not in updates[0][2]
+    assert "role" not in updates[0][2]
+    assert updates[0][2]["contact_id"] == metadata["contact_id"]
+    assert updates[0][2]["verification_status"] == "PENDING"
 
 
 def test_configured_table_ids_avoid_the_schema_call():

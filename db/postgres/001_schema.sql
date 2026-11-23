@@ -974,6 +974,12 @@ CREATE TRIGGER creator_platform_enqueue_sync
     AFTER INSERT OR UPDATE OR DELETE ON creator_platform_account
     FOR EACH ROW EXECUTE FUNCTION enqueue_record_sync();
 
+-- A new or edited contact must carry its fiche to Baserow: the contact worker
+-- runs inside the fiche push, so the fiche itself is the outbox key.
+CREATE TRIGGER contact_enqueue_sync
+    AFTER INSERT OR UPDATE OR DELETE ON contact
+    FOR EACH ROW EXECUTE FUNCTION enqueue_record_sync();
+
 -- Idempotence des événements venant de Baserow. Un webhook rejoué ne doit pas
 -- créer une deuxième décision ni un deuxième contact.
 CREATE TABLE baserow_event (

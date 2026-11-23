@@ -59,6 +59,15 @@ LOAD_FICHE = {
 
 LOAD_PLATFORMS = "SELECT * FROM platform ORDER BY name"
 
+LOAD_CONTACTS = """
+SELECT id, record_id, role, person_name, channel_type::text, channel_value,
+       is_professional_public, source_url, source_date::text,
+       verification_status::text, status::text, notes
+FROM contact
+WHERE record_id = %s
+ORDER BY created_at, id
+"""
+
 SELECT_LINK = """
 SELECT baserow_row_id, sync_hash
 FROM baserow_link
@@ -308,6 +317,21 @@ DO UPDATE SET
     notes = EXCLUDED.notes,
     updated_at = now()
 RETURNING id
+"""
+
+INSERT_DISCOVERED_CONTACT = """
+INSERT INTO contact (
+    record_id, role, person_name, channel_type, channel_value,
+    is_professional_public, source_url, source_date, status, notes
+) VALUES (%s, %s, %s, %s::contact_channel, %s, %s, %s, %s,
+          'ACTIVE'::contact_status, %s)
+ON CONFLICT (record_id, channel_type, lower(channel_value)) DO NOTHING
+RETURNING id
+"""
+
+SELECT_CONTACT_ID = """
+SELECT id FROM contact
+WHERE record_id = %s AND channel_type = %s AND lower(channel_value) = lower(%s)
 """
 
 INSERT_OPT_OUT_EVENT = """
@@ -746,6 +770,14 @@ def load_fact_by_event(connection, external_event_id: str) -> dict | None:
         return _one_dict(cursor)
 
 
+def load_contacts(connection, record_id: str) -> list[dict]:
+    """All contacts of one fiche, in creation order."""
+    with connection.cursor() as cursor:
+        cursor.execute(LOAD_CONTACTS, (record_id,))
+        columns = [column[0] for column in cursor.description]
+        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+
 def load_record_status(connection, record_id: str) -> str | None:
     with connection.cursor() as cursor:
         cursor.execute(LOAD_RECORD_STATUS, (record_id,))
@@ -784,6 +816,50 @@ def upsert_contact(
             ),
         )
         return str(cursor.fetchone()[0])
+
+
+def insert_discovered_contact(
+    connection,
+    *,
+    record_id: str,
+    role: str,
+    person_name: str | None,
+    channel_type: str,
+    channel_value: str,
+    source_url: str,
+    source_date: str,
+    notes: str | None,
+) -> str:
+    """Add a contact discovered on a page, without touching an existing row.
+
+    A contact already present may have been edited or blocked by a human. The
+    discovery path never overwrites it; it only remembers that the fiche has
+    this channel.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            INSERT_DISCOVERED_CONTACT,
+            (
+                record_id,
+                role,
+                person_name,
+                channel_type,
+                channel_value,
+                True,
+                source_url,
+                source_date,
+                notes,
+            ),
+        )
+        row = cursor.fetchone()
+        if row is not None:
+            return str(row[0])
+
+        cursor.execute(SELECT_CONTACT_ID, (record_id, channel_type, channel_value))
+        existing = cursor.fetchone()
+    if existing is None:
+        raise RuntimeError("the contact could not be stored nor found")
+    return str(existing[0])
 
 
 def insert_opt_out_event(

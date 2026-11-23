@@ -53,13 +53,20 @@ def record_sinks(connection, *, computed_by: str = "weekly-run"):
                 record_id=record.record_id,
                 result=record.result,
                 computed_by=computed_by,
-                notes="; ".join(record.notes) or None,
+                notes="; ".join(record.audit_notes()) or None,
             )
             postgres.write_decision(
                 connection,
                 record_id=record.record_id,
                 result=record.result,
                 actor=computed_by,
+            )
+            postgres.write_contacts(
+                connection,
+                record_id=record.record_id,
+                contacts=record.contacts,
+                source_url=record.source_url or "",
+                read_at=record.read_at or "",
             )
         except Exception:
             connection.rollback()

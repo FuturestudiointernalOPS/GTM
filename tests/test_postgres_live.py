@@ -63,6 +63,110 @@ def test_the_smoke_test_replays_and_leaves_nothing():
     assert remaining == 0
 
 
+def test_a_discovered_contact_enqueues_its_fiche_and_never_overwrites():
+    from integrations import sync_store
+
+    with psycopg.connect(DSN) as connection:
+        cursor = connection.cursor()
+        try:
+            cursor.execute(
+                "INSERT INTO record (kind, criteria_version, workflow_status) "
+                "VALUES ('CREATOR', '1.4', 'POOL') RETURNING id"
+            )
+            record_id = str(cursor.fetchone()[0])
+            cursor.execute(
+                "INSERT INTO creator (record_id, display_name) VALUES (%s, %s)",
+                (record_id, "contact-live-test"),
+            )
+            cursor.execute("DELETE FROM sync_outbox WHERE entity_id = %s", (record_id,))
+
+            first = sync_store.insert_discovered_contact(
+                connection,
+                record_id=record_id,
+                role="MARKETING",
+                person_name=None,
+                channel_type="EMAIL",
+                channel_value="live-contact@example.invalid",
+                source_url="https://example.invalid/one",
+                source_date="2026-11-23",
+                notes="first",
+            )
+            pending = cursor.execute(
+                "SELECT count(*) FROM sync_outbox "
+                "WHERE entity_id = %s AND processed_at IS NULL",
+                (record_id,),
+            ).fetchone()[0]
+            assert pending == 1
+
+            second = sync_store.insert_discovered_contact(
+                connection,
+                record_id=record_id,
+                role="AGENCY",
+                person_name="Someone",
+                channel_type="EMAIL",
+                channel_value="LIVE-CONTACT@example.invalid",
+                source_url="https://example.invalid/two",
+                source_date="2026-11-24",
+                notes="second",
+            )
+            assert second == first
+            stored = cursor.execute(
+                "SELECT role, source_url, notes FROM contact WHERE id = %s",
+                (first,),
+            ).fetchone()
+            assert stored == (
+                "MARKETING",
+                "https://example.invalid/one",
+                "first",
+            )
+        finally:
+            connection.rollback()
+
+
+def test_the_contact_writer_stores_a_verified_contact():
+    from integrations import postgres
+    from processing.contacts import PublicContact
+
+    with psycopg.connect(DSN) as connection:
+        cursor = connection.cursor()
+        try:
+            cursor.execute(
+                "INSERT INTO record (kind, criteria_version, workflow_status) "
+                "VALUES ('CREATOR', '1.4', 'POOL') RETURNING id"
+            )
+            record_id = str(cursor.fetchone()[0])
+            cursor.execute(
+                "INSERT INTO creator (record_id, display_name) VALUES (%s, %s)",
+                (record_id, "contact-writer-test"),
+            )
+
+            stored = postgres.write_contacts(
+                connection,
+                record_id=record_id,
+                contacts=(
+                    PublicContact(
+                        role="MARKETING",
+                        channel_type="EMAIL",
+                        channel_value="writer@example.invalid",
+                        description="contact presse",
+                        quote="Пишите: writer@example.invalid",
+                    ),
+                ),
+                source_url="https://example.invalid/profile",
+                read_at="2026-11-23T12:00:00+00:00",
+            )
+
+            assert len(stored) == 1
+            row = cursor.execute(
+                "SELECT channel_value, source_date::text, verification_status "
+                "FROM contact WHERE id = %s",
+                (stored[0],),
+            ).fetchone()
+            assert row == ("writer@example.invalid", "2026-11-23", "PENDING")
+        finally:
+            connection.rollback()
+
+
 def test_the_sync_outbox_and_a_review_action_round_trip():
     with psycopg.connect(DSN) as connection:
         sync_ready = connection.execute(

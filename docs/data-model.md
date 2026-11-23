@@ -657,7 +657,7 @@ erDiagram
 | `workflow_status` | PG, via `review_action` | lecture seule |
 | `assigned_to`, `tags`, `notes`, `next_action_at`, `audit_notes` | BR | éditable |
 | `review_action`, `review_action_note`, `review_action_at` | BR | éditable, puis consommé par PG |
-| Contacts (rôle, canal, source, statut) | BR pour la saisie, PG pour l'historique | éditable ; `OPT_OUT` immédiat |
+| Contacts (rôle, canal, source, statut) | PG crée une fois la ligne découverte ; BR l'édite ensuite ; PG garde l'historique | éditable ; `OPT_OUT` immédiat ; une redécouverte ne réécrit pas un contact existant |
 | Publicités brutes | BR jusqu'à `IMPORTED`, puis PG | éditable avant import, immuable après |
 | Preuves (nouvelles lignes, `review_status`) | BR pour la saisie et la revue | append-only |
 | `Decisions` | PG | lecture seule |

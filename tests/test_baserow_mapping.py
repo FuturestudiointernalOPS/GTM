@@ -15,7 +15,9 @@ from processing.baserow_mapping import (
     PLATFORM_TABLE,
     build_buyer_row,
     build_creator_row,
+    build_contact_row,
     build_platform_row,
+    contact_metadata,
     payload_hash,
     table_fields,
 )
@@ -251,6 +253,40 @@ def test_payload_hash_is_stable_and_value_sensitive():
 
     assert payload_hash(first) == payload_hash(second)
     assert payload_hash(first) != payload_hash({"a": NOW, "b": [1, 3]})
+
+
+def test_a_contact_is_created_with_its_content_and_fiche_link():
+    contact = {
+        "id": RECORD_ID,
+        "channel_value": "press@studio.ru",
+        "role": "MARKETING",
+        "person_name": None,
+        "channel_type": "EMAIL",
+        "is_professional_public": True,
+        "source_url": "https://studio.example",
+        "source_date": "2026-11-23",
+        "verification_status": "PENDING",
+        "status": "ACTIVE",
+        "notes": "contact presse",
+    }
+
+    payload = build_contact_row(
+        contact,
+        record_type="CREATOR",
+        record_row_id=77,
+        record_reference="CR-000001",
+    )
+
+    assert payload["creator"] == [77]
+    assert "acheteur" not in payload
+    assert payload["channel_value"] == "press@studio.ru"
+    assert payload["record_type"] == "CREATOR"
+    assert payload["record_reference"] == "CR-000001"
+    assert payload["contact_id"] == RECORD_ID
+    assert contact_metadata(contact) == {
+        "contact_id": RECORD_ID,
+        "verification_status": "PENDING",
+    }
 
 
 def test_mapping_rejects_an_unknown_table():

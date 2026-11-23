@@ -34,6 +34,7 @@ log = logging.getLogger("gtm.sync")
 CREATOR = "CREATOR"
 BUYER = "BUYER"
 PLATFORM = "PLATFORM"
+CONTACT = "CONTACT"
 
 
 @dataclass
@@ -56,6 +57,7 @@ def push_outbox(
     creators=None,
     buyers=None,
     platforms=None,
+    contacts=None,
     limit: int = 50,
     max_attempts: int = 5,
     retry_seconds: int = 300,
@@ -74,6 +76,7 @@ def push_outbox(
         creators=creators,
         buyers=buyers,
         platforms=platforms,
+        contacts=contacts,
     )
 
     report = PushReport()
@@ -178,7 +181,7 @@ def _process_item(
         else:
             payload = baserow_mapping.build_buyer_row(fiche, schema=schema)
 
-        _, changed = _upsert(
+        row_id, changed = _upsert(
             connection,
             client,
             table_id=table_id,
@@ -189,6 +192,26 @@ def _process_item(
             key_value=item.entity_id,
             with_sync_fields=True,
         )
+        contact_errors = []
+        if tables.contacts is not None:
+            contact_errors = _push_contacts(
+                connection,
+                client,
+                tables,
+                item,
+                row_id,
+                report,
+                record_reference=fiche.get("reference"),
+            )
+        if contact_errors:
+            _fail(
+                connection,
+                item,
+                "; ".join(contact_errors)[:500],
+                max_attempts=max_attempts,
+                retry_seconds=retry_seconds,
+            )
+            return
         sync_store.mark_processed(connection, item.id)
         connection.commit()
         (report.pushed if changed else report.skipped).append(label)
@@ -214,6 +237,102 @@ def _process_item(
         )
         report.failed.append((label, message))
         log.error("%s could not be pushed: %s", label, message)
+
+
+def _push_contacts(
+    connection,
+    client,
+    tables: BaserowTables,
+    item,
+    record_row_id: int,
+    report: PushReport,
+    *,
+    record_reference: str | None = None,
+) -> list[str]:
+    """Push the contacts of one fiche, without overwriting a human edit.
+
+    A new contact is created with its content. An existing contact only gets
+    the fields PostgreSQL owns: its channel, role, notes and status stay as a
+    human left them. A failure on one contact is reported and does not roll
+    back the fiche that was just pushed.
+    """
+    errors: list[str] = []
+    for contact in sync_store.load_contacts(connection, item.entity_id):
+        label = f"{CONTACT}:{contact['id']}"
+        try:
+            link = sync_store.get_link(
+                connection, CONTACT, str(contact["id"]), tables.contacts
+            )
+            if link is not None:
+                metadata = baserow_mapping.contact_metadata(
+                    contact, record_reference=record_reference
+                )
+                fingerprint = baserow_mapping.payload_hash(metadata)
+                if link.sync_hash != fingerprint:
+                    client.update_row(
+                        tables.contacts,
+                        link.row_id,
+                        {**metadata, **success_fields()},
+                    )
+                    sync_store.save_link(
+                        connection,
+                        entity_type=CONTACT,
+                        entity_id=str(contact["id"]),
+                        table_id=tables.contacts,
+                        row_id=link.row_id,
+                        sync_hash=fingerprint,
+                    )
+                    report.pushed.append(label)
+                else:
+                    report.skipped.append(label)
+                continue
+
+            existing = client.find_row(
+                tables.contacts, "contact_id", str(contact["id"])
+            )
+            if existing is None:
+                # A contact may already exist from a human entry or another
+                # fiche: the channel value is its natural key in Baserow.
+                existing = client.find_row(
+                    tables.contacts, "channel_value", contact["channel_value"]
+                )
+            if existing is not None:
+                row_id = int(existing["id"])
+                metadata = baserow_mapping.contact_metadata(
+                    contact, record_reference=record_reference
+                )
+                client.update_row(
+                    tables.contacts, row_id, {**metadata, **success_fields()}
+                )
+                fingerprint = baserow_mapping.payload_hash(metadata)
+            else:
+                payload = baserow_mapping.build_contact_row(
+                    contact,
+                    record_type=item.entity_type,
+                    record_row_id=record_row_id,
+                    record_reference=record_reference,
+                )
+                created = client.create_row(
+                    tables.contacts, {**payload, **success_fields()}
+                )
+                row_id = int(created["id"])
+                fingerprint = baserow_mapping.payload_hash(payload)
+
+            sync_store.save_link(
+                connection,
+                entity_type=CONTACT,
+                entity_id=str(contact["id"]),
+                table_id=tables.contacts,
+                row_id=row_id,
+                sync_hash=fingerprint,
+            )
+            report.pushed.append(label)
+        except Exception as error:  # noqa: BLE001 - one contact must not hide the fiche
+            message = _message(error)
+            errors.append(f"{label}: {message}")
+            report.failed.append((label, message))
+            log.error("%s could not be pushed: %s", label, message)
+    return errors
 
 
 def _upsert(
@@ -332,6 +451,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--creators-table", default=settings.BASEROW_TABLE_CREATORS)
     parser.add_argument("--buyers-table", default=settings.BASEROW_TABLE_BUYERS)
     parser.add_argument("--platforms-table", default=settings.BASEROW_TABLE_PLATFORMS)
+    parser.add_argument("--contacts-table", default=settings.BASEROW_TABLE_CONTACTS)
     parser.add_argument("--limit", type=int, default=50)
     parser.add_argument("--max-attempts", type=int, default=5)
     parser.add_argument("--retry-seconds", type=int, default=300)
@@ -365,6 +485,7 @@ def main(argv: list[str] | None = None) -> int:
             creators=args.creators_table,
             buyers=args.buyers_table,
             platforms=args.platforms_table,
+            contacts=args.contacts_table,
             limit=args.limit,
             max_attempts=args.max_attempts,
             retry_seconds=args.retry_seconds,
