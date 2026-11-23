@@ -163,6 +163,40 @@ def test_a_configuration_error_returns_two(monkeypatch):
     assert main([]) == 2
 
 
+def test_the_run_can_send_its_report_and_drafts(monkeypatch, capsys):
+    from workflows import outreach
+
+    sent = []
+    monkeypatch.setattr("main.run_and_score", lambda **kwargs: run())
+    monkeypatch.setattr(
+        "main.telegram.send_message_safely", lambda text: sent.append(text) or True
+    )
+    monkeypatch.setattr(
+        "main.outreach.build_drafts",
+        lambda records, provider, max_drafts: (
+            outreach.Outreach(
+                recipient={"name": "Studio", "url": "https://studio.example"},
+                draft={"channel": "email", "message": "Здравствуйте!"},
+            ),
+        ),
+    )
+
+    assert main(["--dry-run", "--send-telegram", "--send-draft"]) == 0
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["telegram_sent"] is True
+    assert output["drafts_sent"] is True
+    assert len(sent) >= 2
+    assert any("BROUILLONS À VALIDER" in text for text in sent)
+
+
+def test_a_refused_telegram_message_returns_one(monkeypatch):
+    monkeypatch.setattr("main.run_and_score", lambda **kwargs: run())
+    monkeypatch.setattr("main.telegram.send_message_safely", lambda text: False)
+
+    assert main(["--dry-run", "--send-telegram"]) == 1
+
+
 def test_the_summary_reports_every_outcome():
     result = summary(
         run(
