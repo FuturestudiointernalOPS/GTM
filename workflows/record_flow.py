@@ -13,6 +13,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 from processing import enrichment, extraction, scoring
+from processing.contacts import BuyerProgram, PublicContact
 from processing.engagement import (
     EngagementItem,
     EngagementMeasure,
@@ -37,12 +38,23 @@ class RecordScore:
     record_id: str | None = None
     account_id: str | None = None
     source_url: str | None = None  # run handle, used to join a verification
+    title: str | None = None
+    legal_name: str | None = None
+    read_at: str | None = None
+    page_excerpt: str | None = None  # what the model read, kept for a draft
+    contacts: tuple[PublicContact, ...] = ()
+    programs: tuple[BuyerProgram, ...] = ()
 
     def run_row(self) -> dict | None:
         return self.result.to_score_run()
 
     def line_rows(self) -> list[dict]:
         return self.result.to_score_lines()
+
+    def audit_notes(self) -> tuple[str, ...]:
+        """The notes written with the score, including company programmes."""
+        extra = tuple(f"programme: {program.summary()}" for program in self.programs)
+        return self.notes + extra
 
 
 def creator_measure(

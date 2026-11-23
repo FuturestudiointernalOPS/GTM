@@ -31,6 +31,7 @@ DEFAULT_SCHEMA = (
 CREATOR_TABLE = "Createurs"
 BUYER_TABLE = "Acheteurs"
 PLATFORM_TABLE = "Plateformes"
+CONTACT_TABLE = "Contacts"
 
 # The database view names two fields differently from the operational table.
 CREATOR_ALIASES = {
@@ -112,6 +113,55 @@ def build_platform_row(
         platform_row_ids={},
         schema=schema,
     )
+
+
+def build_contact_row(
+    contact: Mapping[str, Any],
+    *,
+    record_type: str,
+    record_row_id: int,
+    record_reference: str | None = None,
+) -> dict[str, Any]:
+    """Build the Baserow payload for a newly discovered contact.
+
+    A contact created by the run is initialised with its content once. Later
+    passes only refresh the fields PostgreSQL owns, so a human edit or an
+    opt-out is never overwritten by a new discovery.
+    """
+    if record_type not in {"CREATOR", "BUYER"}:
+        raise MappingError(f"unknown record type for a contact: {record_type!r}")
+    if not record_reference:
+        raise MappingError("a contact needs the reference of its fiche")
+    link_field = "creator" if record_type == "CREATOR" else "acheteur"
+    return {
+        "channel_value": contact.get("channel_value"),
+        "contact_id": str(contact.get("id") or ""),
+        "record_type": record_type,
+        "record_reference": record_reference,
+        link_field: [record_row_id],
+        "role": contact.get("role"),
+        "person_name": contact.get("person_name"),
+        "channel_type": contact.get("channel_type"),
+        "is_professional_public": bool(contact.get("is_professional_public")),
+        "source_url": contact.get("source_url"),
+        "source_date": contact.get("source_date"),
+        "verification_status": contact.get("verification_status") or "PENDING",
+        "status": contact.get("status") or "ACTIVE",
+        "notes": contact.get("notes"),
+    }
+
+
+def contact_metadata(
+    contact: Mapping[str, Any], *, record_reference: str | None = None
+) -> dict[str, Any]:
+    """The fields PostgreSQL owns on an existing contact row."""
+    metadata = {
+        "contact_id": str(contact.get("id") or ""),
+        "verification_status": contact.get("verification_status") or "PENDING",
+    }
+    if record_reference:
+        metadata["record_reference"] = record_reference
+    return metadata
 
 
 def payload_hash(payload: Mapping[str, Any]) -> str:

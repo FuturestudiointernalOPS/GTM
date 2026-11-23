@@ -362,6 +362,48 @@ def test_the_loop_carries_the_record_and_account_ids():
     assert record.account_id is not None and record.account_id.startswith("acc-")
 
 
+def test_a_buyer_page_creates_a_provisional_fiche_and_keeps_its_contact():
+    text = "Grim Soul — программа для авторов. Пишите: press@grimsoul.example"
+    answer_json = json.dumps(
+        {
+            "claims": {"sells_to_gamers": True},
+            "quotes": {"sells_to_gamers": "Grim Soul — программа для авторов"},
+            "legal_name": "Grim Soul",
+            "contacts": [
+                {
+                    "role": "INFLUENCE_PARTNERSHIPS",
+                    "channel_type": "EMAIL",
+                    "channel_value": "press@grimsoul.example",
+                    "description": "programme créateurs",
+                    "quote": "Пишите: press@grimsoul.example",
+                }
+            ],
+        }
+    )
+    store = MemoryRecordStore()
+    candidate = Candidate(
+        kind=BUYER,
+        record_id="https://grimsoul.example/support",
+        source_url="https://grimsoul.example/support",
+        text=text,
+        read_at=READ,
+        title="Support program - OLD",
+    )
+
+    record = score_candidate(
+        FakeProvider(lambda payload: answer_json),
+        candidate,
+        record_for=lambda item: ensure_record(
+            store, item, tax_id=item.tax_id, legal_name=item.legal_name
+        ),
+    )
+
+    assert record.record_id != candidate.record_id
+    assert record.legal_name == "Grim Soul"
+    assert len(record.contacts) == 1
+    assert record.contacts[0].channel_value == "press@grimsoul.example"
+
+
 def test_the_measure_is_saved_before_the_score_line_is_bound():
     store = MemoryRecordStore()
     saved = []

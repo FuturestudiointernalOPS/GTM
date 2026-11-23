@@ -19,6 +19,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from ai.provider import AIProvider
+from processing.contacts import verify_contacts, verify_programs
 from processing.deduplication import normalize_url
 from processing.engagement import EngagementItem, EngagementMeasure
 from processing.evidence import OBSERVED, EvidenceLedger, Source
@@ -72,14 +73,23 @@ class Candidate:
     read_at: str
     tax_id: str | None = None
     legal_name: str | None = None
+    title: str | None = None
+    links: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class Claims:
-    """What the model asserted, and the excerpts it says support it."""
+    """What the model asserted, and the excerpts it says support it.
+
+    ``contacts`` and ``programs`` are still raw: the scoring loop verifies them
+    against the page before they become part of the record.
+    """
 
     values: dict
     quotes: dict
+    contacts: tuple = ()
+    programs: tuple = ()
+    legal_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -112,6 +122,11 @@ def candidates_from_pages(pages, reads=(), *, read_at: str) -> list[Candidate]:
     stable handle for the run, not a database identifier.
     """
     texts = {read.url: read.text for read in reads if getattr(read, "text", None)}
+    links = {
+        read.url: tuple(getattr(read, "links", ()) or ())
+        for read in reads
+        if getattr(read, "url", None)
+    }
     candidates: list[Candidate] = []
 
     for page in pages:
@@ -131,6 +146,8 @@ def candidates_from_pages(pages, reads=(), *, read_at: str) -> list[Candidate]:
                 read_at=read_at,
                 tax_id=_first(page, "tax_id", "inn", "ogrn"),
                 legal_name=_first(page, "legal_name"),
+                title=page.get("title"),
+                links=links.get(url, ()),
             )
         )
 
@@ -173,6 +190,7 @@ def collect_claims(provider: AIProvider, candidate: Candidate) -> Claims:
     payload = {
         "source_url": candidate.source_url,
         "text": (candidate.text or "")[:MAX_TEXT],
+        "links": list(candidate.links)[:50],
     }
     if candidate.kind == CREATOR:
         model = provider.extract_creator(payload)
@@ -180,9 +198,18 @@ def collect_claims(provider: AIProvider, candidate: Candidate) -> Claims:
         model = provider.extract_buyer(payload)
     else:
         raise ValueError(f"unknown candidate kind: {candidate.kind}")
+    contacts = tuple(
+        contact.model_dump() for contact in getattr(model, "contacts", ()) or ()
+    )
+    programs = tuple(
+        program.model_dump() for program in getattr(model, "programs", ()) or ()
+    )
     return Claims(
         values=model.claims.model_dump(exclude_none=True),
         quotes=dict(model.quotes),
+        contacts=contacts,
+        programs=programs,
+        legal_name=getattr(model, "legal_name", None),
     )
 
 
@@ -244,15 +271,36 @@ def score_candidate(
     measure before it is bound to the score line, and ``measure_run_id`` is the
     explicit form for tests.
     """
-    keys = record_for(candidate) if record_for is not None else None
-    record_id = keys.record_id if keys is not None else candidate.record_id
-    account_id = keys.account_id if keys is not None else None
-
     if items is None and sample_for is not None:
         items = sample_for(candidate)
 
     collected = collect_claims(provider, candidate)
+
+    # A company page often has no legal name, only a title. The fallback keeps
+    # the fiche possible without inventing a legal form; the ad path can attach
+    # the real tax id and promote it later.
+    effective = candidate
+    if candidate.kind == BUYER and not candidate.legal_name:
+        name = (collected.legal_name or candidate.title or "").strip()
+        if name:
+            effective = replace(candidate, legal_name=name)
+
+    keys = record_for(effective) if record_for is not None else None
+    record_id = keys.record_id if keys is not None else candidate.record_id
+    account_id = keys.account_id if keys is not None else None
+
     values, rejected = verify_quotes(collected, text=candidate.text)
+    contacts = verify_contacts(
+        collected.contacts,
+        text=candidate.text,
+        links=candidate.links,
+        source_url=candidate.source_url,
+    )
+    programs = verify_programs(
+        collected.programs,
+        text=candidate.text,
+        links=candidate.links,
+    )
     ledger = record_claims(
         values, source_url=candidate.source_url, read_at=candidate.read_at
     )
@@ -280,6 +328,12 @@ def score_candidate(
         account_id=account_id,
         measure=measure,
         source_url=candidate.source_url,
+        title=candidate.title,
+        legal_name=effective.legal_name,
+        read_at=candidate.read_at,
+        page_excerpt=(candidate.text or "")[:1500],
+        contacts=contacts,
+        programs=programs,
     )
 
 

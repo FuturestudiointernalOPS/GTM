@@ -49,9 +49,19 @@ def test_a_creator_identity_keeps_the_address_for_the_account_row():
 
 def test_a_page_that_is_not_a_profile_has_no_identity():
     assert creator_identity("https://vk.com/video-1_2") is None
-    assert creator_identity("https://t.me/s/channel") is None
     assert creator_identity("https://www.youtube.com/watch?v=x") is None
     assert creator_identity("https://example.com/creator") is None
+    assert creator_identity("https://t.me/joinchat/abc") is None
+
+
+def test_a_telegram_web_preview_is_the_same_channel():
+    preview = creator_identity("https://t.me/s/PsychoClxn?before=233")
+    plain = creator_identity("https://t.me/psychoclxn")
+
+    assert preview is not None and plain is not None
+    assert preview.platform == plain.platform == "Telegram"
+    assert preview.handle == plain.handle == "psychoclxn"
+    assert creator_identity("https://telegram.me/s/psychoclxn").handle == "psychoclxn"
 
 
 # --- creators ---------------------------------------------------------------

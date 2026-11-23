@@ -53,7 +53,19 @@ python -m main --week 45
 
 # Run complet suivi du contrôle d'éligibilité
 python -m main --week 45 --verification verifications.json
+
+# Run complet avec rapport Telegram et brouillons à valider
+python -m main --week 45 --send-telegram --send-draft
+
+# Tous les brouillons, sans plafond
+python -m main --week 45 --send-telegram --send-draft --max-drafts 0
 ```
+
+`--send-telegram` envoie le rapport construit à partir des **vrais scores** du
+run. `--send-draft` ajoute les brouillons de tous les créateurs et acheteurs
+notés qui ont un contact public vérifié ou un moyen de soumission. Les textes
+sont envoyés au responsable pour validation, jamais aux cibles. Le plafond est
+de 20 brouillons par passage ; `0` le retire.
 
 `python -m main --help` liste les autres options (rotation, quota par requête,
 texte des pages, plafond de l'acteur, niveau de log).
@@ -79,6 +91,11 @@ brouillon de message. Le brouillon n'est jamais envoyé : il est affiché pour
 validation humaine. `--send-telegram` envoie uniquement le résumé au chat
 configuré ; `--recipient buyer` prépare le brouillon pour une entreprise,
 `--no-ai` s'arrête après la recherche et `--json` produit la sortie machine.
+
+La démonstration ne calcule pas de score et n'extrait pas les contacts : c'est
+un aperçu volontairement léger. Pour un rapport avec scores, contacts,
+programmes et brouillons pour toutes les cibles, lancer le run complet avec
+`--send-telegram --send-draft`.
 
 `--send-draft` envoie le brouillon au chat configuré pour validation, avec la
 cible, la page, l'élément cité et le message proposé. Le bot ne lit pas les
@@ -110,20 +127,25 @@ psql -f db/postgres/002_seed_reference.sql
 psql -f db/postgres/smoke_test.sql   # vérifie puis annule tout
 ```
 
-Sur une base créée avant la synchronisation, appliquer ensuite la migration :
+Sur une base créée avant la synchronisation, appliquer ensuite les migrations :
 
 ```bash
 psql -f db/postgres/004_sync.sql
+psql -f db/postgres/005_evidence.sql
+psql -f db/postgres/006_contact_sync.sql
 ```
 
 Le seeder Baserow s'exécute à part : voir [`db/README.md`](db/README.md).
 
 ## Synchronisation PostgreSQL → Baserow
 
-Le lot 1 pousse les fiches créateur et acheteur, ainsi que la table de
-référence des plateformes, de PostgreSQL vers Baserow. Il crée ou met à jour la
-ligne correspondante, ne renvoie jamais une fiche inchangée et n'écrase aucun
-champ saisi par un humain.
+Le lot 1 pousse les fiches créateur et acheteur, la table de référence des
+plateformes et les contacts publics découverts, de PostgreSQL vers Baserow. Il
+crée ou met à jour la ligne correspondante, ne renvoie jamais une fiche
+inchangée et n'écrase aucun champ saisi par un humain. Un contact découvert est
+créé une fois avec son contenu ; les passages suivants ne rafraîchissent que les
+champs que PostgreSQL possède, donc une correction ou un refus de contact reste
+intact.
 
 Toujours utiliser l'interpréteur du projet, sinon `python-dotenv` manque :
 
@@ -150,9 +172,11 @@ Ou, sans activer l'environnement :
 
 Chaque commande traite une passe puis s'arrête : elle peut être appelée par une
 tâche planifiée. `BASEROW_ROW_TOKEN` doit être un jeton de base durable, pas le
-JWT de structure qui expire au bout d'une heure. Les trois identifiants de
-tables évitent d'interroger la structure Baserow à chaque passe ; on les lit
-dans l'URL `https://…/database/{id}/table/{id}/`.
+JWT de structure qui expire au bout d'une heure. Les identifiants de tables
+évitent d'interroger la structure Baserow à chaque passe ; on les lit dans
+l'URL `https://…/database/{id}/table/{id}/`. Le jeton de lignes peut créer et
+mettre à jour, mais pas supprimer : une suppression de ligne reste manuelle
+dans Baserow.
 
 La file est alimentée automatiquement par la base : une fiche créée ou modifiée
 dépose un changement en attente, et un seul changement reste en attente par

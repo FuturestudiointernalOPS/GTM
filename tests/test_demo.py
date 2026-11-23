@@ -154,6 +154,27 @@ def test_a_directory_page_is_not_chosen_for_the_draft(monkeypatch):
     )
 
 
+def test_a_telegram_web_preview_is_kept_as_the_same_channel(monkeypatch):
+    _install(
+        monkeypatch,
+        creators=[
+            _page(
+                "https://t.me/s/psychoclxn?before=233",
+                "Preview",
+                platform="Telegram",
+            )
+        ],
+        companies=[],
+    )
+
+    report = demo.build_demo(week=45, provider=FakeProvider(), read=_read)
+
+    assert [creator["url"] for creator in report["creators"]] == [
+        "https://t.me/s/psychoclxn?before=233"
+    ]
+    assert "C1 · psychoclxn" in report["telegram_notification"]
+
+
 def test_an_unreadable_page_falls_back_to_the_next_profile(monkeypatch):
     _install(
         monkeypatch,

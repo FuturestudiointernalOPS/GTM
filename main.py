@@ -23,7 +23,8 @@ import sys
 
 from ai import get_ai_provider
 from config import settings
-from integrations import postgres
+from integrations import postgres, telegram
+from workflows import outreach, run_report, telegram_report
 from workflows.eligibility_step import VerificationFile
 from workflows.engagement_step import apify_fetcher
 from workflows.postgres_run import postgres_run
@@ -84,6 +85,23 @@ def build_parser() -> argparse.ArgumentParser:
         default="weekly-run",
         help="actor name written in the score, measure and decisions",
     )
+    parser.add_argument(
+        "--send-telegram",
+        action="store_true",
+        help="send the run report to the configured Telegram chat",
+    )
+    parser.add_argument(
+        "--send-draft",
+        action="store_true",
+        help="send every outreach draft to the supervisor for approval",
+    )
+    parser.add_argument(
+        "--max-drafts",
+        type=int,
+        default=outreach.DEFAULT_MAX_DRAFTS,
+        metavar="N",
+        help="maximum drafts to generate; 0 means no limit",
+    )
     parser.add_argument("--log-level", default="INFO")
     return parser
 
@@ -101,8 +119,47 @@ def main(argv: list[str] | None = None) -> int:
         log.error("%s", error)
         return 2
 
-    print(json.dumps(summary(run, dry_run=args.dry_run), ensure_ascii=False, indent=2))
-    return 1 if (run.write_failed or run.eligibility_failed) else 0
+    drafted: tuple = ()
+    wants_drafts = args.send_draft
+    if wants_drafts:
+        drafted = outreach.build_drafts(
+            run.scores.scored,
+            get_ai_provider(),
+            max_drafts=args.max_drafts,
+        )
+
+    report_sent = None
+    if args.send_telegram:
+        report = run_report.build_report(run, drafted, drafts_requested=args.send_draft)
+        parts = telegram_report.split(telegram_report.render(report))
+        report_sent = all([telegram.send_message_safely(part) for part in parts])
+
+    drafts_sent = None
+    if args.send_draft:
+        text = outreach.validation_text(drafted)
+        if text:
+            parts = telegram_report.split(text)
+            drafts_sent = all([telegram.send_message_safely(part) for part in parts])
+        else:
+            drafts_sent = True
+
+    output = summary(run, dry_run=args.dry_run)
+    output["drafts"] = [
+        {
+            "name": item.recipient.get("name"),
+            "channel": item.channel,
+            "error": item.error,
+        }
+        for item in drafted
+    ]
+    output["telegram_sent"] = report_sent
+    output["drafts_sent"] = drafts_sent
+    print(json.dumps(output, ensure_ascii=False, indent=2))
+
+    failed = bool(run.write_failed or run.eligibility_failed)
+    failed = failed or (args.send_telegram and not report_sent)
+    failed = failed or (args.send_draft and not drafts_sent)
+    return 1 if failed else 0
 
 
 def execute(args) -> WeeklyRun:

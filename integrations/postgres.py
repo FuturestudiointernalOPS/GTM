@@ -17,6 +17,7 @@ from decimal import Decimal
 from fractions import Fraction
 
 from config import settings
+from integrations import sync_store
 from processing import eligibility
 from processing.engagement import MEASURED, EngagementMeasure
 from processing.scoring import (
@@ -212,6 +213,48 @@ def write_score(
                 ),
             )
     return str(run_id)
+
+
+def write_contacts(
+    connection,
+    *,
+    record_id,
+    contacts,
+    source_url: str,
+    read_at: str,
+) -> tuple[str, ...]:
+    """Store the public contacts discovered on the record's page.
+
+    A contact already present is never overwritten or reactivated: a human may
+    have verified it or recorded an opt-out. The discovery path only adds what
+    is missing. ``source_date`` is the read date, as the retention rule asks.
+    """
+    if record_id is None or not contacts:
+        return ()
+
+    source_date = (read_at or "")[:10]
+    if len(source_date) != 10:
+        raise ValueError("a contact needs the date its page was read")
+
+    stored: list[str] = []
+    for contact in contacts:
+        notes = " | ".join(
+            part for part in (contact.description, f"citation: {contact.quote}") if part
+        )
+        stored.append(
+            sync_store.insert_discovered_contact(
+                connection,
+                record_id=str(record_id),
+                role=contact.role,
+                person_name=contact.person_name,
+                channel_type=contact.channel_type,
+                channel_value=contact.channel_value,
+                source_url=source_url or "",
+                source_date=source_date,
+                notes=notes or None,
+            )
+        )
+    return tuple(stored)
 
 
 def write_decision(
