@@ -4,7 +4,7 @@ Ce document donne une vue d'ensemble ; il ne remplace aucune règle. En cas de
 doute, `docs/scope.md` fait foi pour les critères, `docs/verification.md` pour
 les procédures, et `docs/data-model.md` pour les champs.
 
-Dernière revue : 2026-11-23.
+Dernière revue : 2026-11-24.
 
 ## 1. Ce qui est exécutable
 
@@ -47,9 +47,11 @@ Dernière revue : 2026-11-23.
   plateformes reliées), et la création d'un contact a été confirmée le
   2026-11-23. Le jeton de lignes peut créer et mettre à jour, mais pas
   supprimer : une suppression de ligne reste une action manuelle dans Baserow.
-  L'entrée Baserow → PostgreSQL est écrite pour les actions de revue, les
-  contacts, les preuves acceptées, les publicités brutes et le rapprochement
-  acheteur, mais elle n'a pas encore été exercée sur des lignes réelles.
+  Les cinq passes entrantes ont été exécutées contre l'instance réelle le
+  2026-11-24 : un contact a été stocké et son identifiant reporté dans Baserow,
+  et les lignes vides ont été ignorées. Les tables de preuves et de publicités
+  ne contenaient encore que des lignes vides, donc les transitions de revue et
+  le rapprochement acheteur restent à exercer sur de vraies lignes.
 - **Planification** : seule la sortie fiches, plateformes et contacts tourne
   automatiquement, toutes les quinze minutes. Les passes entrantes (revue,
   contacts, preuves, publicités, rapprochement) restent des commandes manuelles.
