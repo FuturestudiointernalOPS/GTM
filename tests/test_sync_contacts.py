@@ -225,6 +225,7 @@ def test_a_professional_contact_is_stored_and_acknowledged():
     contact = next(iter(connection.contacts.values()))
     assert contact["status"] == "ACTIVE"
     assert contact["channel_value"] == "ivan@example.test"
+    assert client.updated[-1][2]["contact_id"] == contact["id"]
     assert client.updated[-1][2]["sync_status"] == "SYNCED"
 
 
