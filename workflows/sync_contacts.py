@@ -196,8 +196,15 @@ def _apply_contact(
 
     connection.commit()
 
+    # Write the PostgreSQL id back: a contact created in Baserow must carry the
+    # same identity as the pushed contacts, so the next push finds this row by
+    # contact_id instead of falling back to the channel value.
     try:
-        client.update_row(tables.contacts, row_id, success_fields())
+        client.update_row(
+            tables.contacts,
+            row_id,
+            {"contact_id": contact_id, **success_fields()},
+        )
     except Exception as error:
         message = _message(error)
         report.failed.append((label, message))
