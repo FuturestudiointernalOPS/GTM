@@ -19,6 +19,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from ai.provider import AIProvider
+from processing.contact_finder import find_in_text
 from processing.contacts import verify_contacts, verify_programs
 from processing.deduplication import normalize_url
 from processing.engagement import EngagementItem, EngagementMeasure
@@ -296,6 +297,11 @@ def score_candidate(
         links=candidate.links,
         source_url=candidate.source_url,
     )
+    if not contacts:
+        # The model may miss an address written on the page: read it by pattern.
+        contacts = find_in_text(
+            candidate.text, candidate.links, source_url=candidate.source_url
+        )
     programs = verify_programs(
         collected.programs,
         text=candidate.text,
@@ -334,6 +340,7 @@ def score_candidate(
         page_excerpt=(candidate.text or "")[:1500],
         contacts=contacts,
         programs=programs,
+        page_links=tuple(candidate.links),
     )
 
 

@@ -13,6 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from ai.provider import AIProvider
+from workflows.contact_step import ReadPage, enrich_contacts, read_contact_page
 from workflows.eligibility_step import (
     EligibilityWriter,
     VerifyFor,
@@ -57,6 +58,8 @@ def run_and_score(
     num_results: int = 10,
     read_top: int = 3,
     with_text: bool = False,
+    contact_pages: int = 0,
+    read_page: ReadPage = read_contact_page,
 ) -> WeeklyRun:
     """Run one week end to end.
 
@@ -71,6 +74,10 @@ def run_and_score(
     is written. Both must be provided: the first returns the check results for a
     record (or None when no procedure ran), the second stores the decision. A
     record without a verification is reported as skipped, never as eligible.
+
+    ``contact_pages`` is how many of the best records without a contact get
+    their contact pages read after scoring (0: none). ``read_page`` replaces the
+    real reader in tests.
     """
     result = (
         collect()
@@ -98,6 +105,7 @@ def run_and_score(
         record_for=record_for,
         save_measure=save_measure,
     )
+    scores = enrich_contacts(scores, read=read_page, limit=contact_pages)
 
     written: list[str] = []
     write_failed: list[tuple[str, str]] = []

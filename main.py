@@ -47,6 +47,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--num-results", type=int, default=10)
     parser.add_argument("--read-top", type=int, default=3)
     parser.add_argument(
+        "--contact-pages",
+        type=int,
+        default=20,
+        metavar="N",
+        help="read the contact pages of the N best records without a contact (0: off)",
+    )
+    parser.add_argument(
         "--with-text",
         action="store_true",
         help="ask the search providers for the page text too",
@@ -176,6 +183,7 @@ def execute(args) -> WeeklyRun:
         "num_results": args.num_results,
         "read_top": args.read_top,
         "with_text": args.with_text,
+        "contact_pages": args.contact_pages,
     }
 
     if args.dry_run:

@@ -44,6 +44,7 @@ class RecordScore:
     page_excerpt: str | None = None  # what the model read, kept for a draft
     contacts: tuple[PublicContact, ...] = ()
     programs: tuple[BuyerProgram, ...] = ()
+    page_links: tuple[str, ...] = ()  # links of the page, to find its contact page
 
     def run_row(self) -> dict | None:
         return self.result.to_score_run()
