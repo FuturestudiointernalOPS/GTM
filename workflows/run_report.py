@@ -8,6 +8,7 @@ blocker instead of receiving an invented address.
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 
 from workflows.telegram_report import (
@@ -60,6 +61,9 @@ def build_report(run, outreaches=(), *, drafts_requested: bool = False) -> Weekl
         blockers=tuple(blockers),
         drafts=drafts,
         draft_note=("Le texte complet est envoyé pour validation, jamais à la cible.",),
+        more_note="in Baserow"
+        if run.written
+        else "(not saved: dry run or failed write)",
     )
 
 
@@ -98,9 +102,9 @@ def _refs(creators, buyers) -> dict[str, str]:
 def _blockers(run, outreaches) -> list[str]:
     blockers: list[str] = []
     for record_id, error in run.scores.failed:
-        blockers.append(f"score {record_id}: {error}")
+        blockers.append(f"score {record_id}: {short_error(error)}")
     for record_id, error in run.write_failed:
-        blockers.append(f"écriture {record_id}: {error}")
+        blockers.append(f"écriture {record_id}: {short_error(error)}")
     if run.eligibility_skipped:
         blockers.append(
             f"{len(run.eligibility_skipped)} fiche(s) sans vérification réglementaire"
@@ -111,3 +115,25 @@ def _blockers(run, outreaches) -> list[str]:
                 f"brouillon {outreach.recipient.get('name') or '?'}: {outreach.error}"
             )
     return blockers[:10]
+
+
+_VALIDATION = re.compile(r"\d+ validation errors? for (\w+)")
+
+
+def short_error(error: str) -> str:
+    """One readable line for the report; the full error stays in the log.
+
+    A pydantic error lists every field over several lines. It means the model
+    answered without some required excerpts, so the report names those fields.
+    """
+    text = str(error or "").strip()
+    match = _VALIDATION.search(text)
+    if match:
+        fields = []
+        for line in text.splitlines()[1:]:
+            name = line.strip()
+            if name and not line.startswith((" ", "\t")) and name not in fields:
+                fields.append(name.split(".")[-1])
+        listed = ", ".join(fields[:4]) or "?"
+        return f"réponse IA incomplète ({match.group(1)} : {listed})"
+    return text.splitlines()[0][:120] if text else "erreur inconnue"

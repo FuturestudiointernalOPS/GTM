@@ -43,7 +43,13 @@ _TITLE_NOISE = (
     r"\s+[-|–]\s+youtube$",
     r"\s+\|\s+vk$",
     r"\s+/\s+хабр$",
+    r"^смотреть\s+",
+    r"\s+на rutube.*$",
+    r"\s*[-|–]\s*rutube$",
 )
+
+# One blocker line stays readable on a phone.
+MAX_BLOCKER = 160
 
 
 @dataclass(frozen=True)
@@ -95,6 +101,8 @@ class WeeklyReport:
     demo: bool = False  # adds a banner: test data, nothing to act on
     # Lines under the drafts; None keeps the Playbook text (Baserow + reply).
     draft_note: tuple[str, ...] | None = None
+    # Where the records beyond the top 5 are; "" when the run saved nothing.
+    more_note: str = "in Baserow"
 
 
 APPROVAL_NOTE = (
@@ -109,8 +117,8 @@ def render(report: WeeklyReport) -> str:
         _header(report),
         _spend(report),
         _funnel(report),
-        _top("🎮 3) TOP 5 CREATORS", "C", report.creators),
-        _top("🏢 4) TOP 5 BUYERS", "B", report.buyers),
+        _top("🎮 3) TOP 5 CREATORS", "C", report.creators, report.more_note),
+        _top("🏢 4) TOP 5 BUYERS", "B", report.buyers, report.more_note),
         _blockers(report),
         _drafts(report),
     ]
@@ -188,6 +196,10 @@ def display_name(title: str | None, url: str) -> str:
 def readable_url(url: str) -> str:
     """Decode %D0%... into letters, so a Cyrillic address stays readable."""
     decoded = unquote(url)
+    # t.me/s/name?before=233 is one page of posts: the channel is t.me/name.
+    match = re.match(r"https?://t\.me/s/([A-Za-z0-9_]+)", decoded)
+    if match:
+        return f"https://t.me/{match.group(1)}"
     # A decoded space would cut the link in Telegram: keep the original then.
     return url if re.search(r"\s", decoded) else decoded
 
@@ -244,7 +256,9 @@ def _mark(target: Target) -> str:
     return "✅" if target.done >= target.goal else "⚠️"
 
 
-def _top(title: str, prefix: str, items: Sequence[Candidate]) -> str:
+def _top(
+    title: str, prefix: str, items: Sequence[Candidate], more_note: str = "in Baserow"
+) -> str:
     ranked = sorted(items, key=lambda c: (c.score is None, -(c.score or 0)))[:TOP_N]
     if not ranked:
         return f"{title}\nNone found this week."
@@ -265,7 +279,8 @@ def _top(title: str, prefix: str, items: Sequence[Candidate]) -> str:
         blocks.append("\n".join(lines))
     hidden = len(items) - len(ranked)
     if hidden > 0:
-        blocks.append(f"   + {hidden} more in Baserow")
+        where = f" {more_note}" if more_note else ""
+        blocks.append(f"   + {hidden} more{where}")
     return "\n\n".join(blocks)
 
 
@@ -273,8 +288,14 @@ def _blockers(report: WeeklyReport) -> str:
     lines = ["🚧 5) BLOCKERS & QUESTIONS"]
     if not report.blockers:
         lines.append("None 🎉")
-    lines += [f"• {item}" for item in report.blockers]
+    lines += [f"• {short_line(item)}" for item in report.blockers]
     return "\n".join(lines)
+
+
+def short_line(text: str, limit: int = MAX_BLOCKER) -> str:
+    """First line only, cut at ``limit``: a raw error must not flood the report."""
+    first = (text or "").strip().splitlines()[0] if (text or "").strip() else ""
+    return first if len(first) <= limit else first[: limit - 1].rstrip() + "…"
 
 
 def _drafts(report: WeeklyReport) -> str:
